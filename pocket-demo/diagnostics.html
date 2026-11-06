@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#080f19">
+<title>Pocket TTS · Browser Diagnostics</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#08111d;color:#eaf9fe;font:15px/1.6 system-ui,Segoe UI,Arial,sans-serif}
+main{margin:40px auto;padding:0 18px;max-width:760px}h1{font-size:clamp(29px,5vw,45px);line-height:1.15;letter-spacing:-.04em}
+p{color:#a8bdcc}a{color:#5ce1d4}button{border:0;border-radius:10px;background:#5ce1d4;color:#07171f;font:700 14px system-ui;padding:12px 17px;cursor:pointer}
+button.secondary{background:#21394d;color:#ebfaff}.row{display:flex;gap:9px;flex-wrap:wrap}
+#results{display:grid;gap:8px;margin:24px 0}.result{border:1px solid #315165;border-radius:12px;background:#122235;padding:14px}.result strong{display:block}
+.result p{margin:5px 0;overflow-wrap:anywhere}.ok{border-color:#337962}.fail{border-color:#ac6464}.warn{border-color:#968455}
+small{color:#9bb7c6}.note{border-left:3px solid #5ce1d4;padding:10px 16px;background:#122235;margin-top:22px}
+</style>
+</head>
+<body>
+<main>
+<p><a href="./">← Back to Pocket TTS</a></p>
+<h1>Pocket Studio diagnostics</h1>
+<p>Checks whether the real browser inference files, model metadata and audio APIs can be reached. A green result proves the resource exists, not that your machine can run full voice synthesis. No microphone audio is uploaded during these checks.</p>
+<div class="row">
+<button id="test">Run checks</button>
+<button class="secondary" id="mic">Test microphone permission</button>
+<button class="secondary" id="copy">Copy report</button>
+</div>
+<div id="results" aria-live="polite"><p>Click Run checks to test your browser and hosted model resources.</p></div>
+<div class="note"><strong>If Pocket remains stuck:</strong><p>Open the full Studio, choose a built-in voice and test typed speech. First-time model downloads can take time, particularly with limited RAM. If model downloads or WASM runtime fail, disable strict network blocking for the trusted model hosts, or try recent Chrome/Edge and reload the page. Browser microphone dictation may require its own speech-recognition service.</p></div>
+<p><a href="./studio/index.html">Open actual Pocket ONNX Studio ↗</a> · <a href="../online-test/?model=pocket">Online model lab ↗</a></p>
+</main>
+<script>
+(()=>{
+const $=id=>document.getElementById(id);
+const report=[];
+const show=(title,description,state)=>{
+  report.push({title,description,state});
+  const item=document.createElement("div");item.className="result "+(state||"warn");
+  const h=document.createElement("strong");h.textContent=(state==="ok"?"✓ ":state==="fail"?"× ":"! ")+title;item.appendChild(h);
+  const p=document.createElement("p");p.textContent=description;item.appendChild(p);
+  $("results").appendChild(item);
+};
+async function request(url,label,minimum=0){
+ try{
+  const response=await fetch(url,{cache:"no-store"});
+  if(!response.ok)throw Error("HTTP "+response.status);
+  if(minimum){
+    // Confirm actual nonempty large runtime is served, not a 404 HTML fallback.
+    const size=Number(response.headers.get("content-length")||0);
+    if(size&&size<minimum)throw Error("File too small ("+size+" bytes)");
+  }
+  show(label,"Available: "+url,"ok");
+ }catch(e){show(label,"Unavailable: "+e.message+" · "+url,"fail")}
+}
+$("test").addEventListener("click",async()=>{
+ report.length=0;$("results").textContent="";
+ show("HTTPS secure context",window.isSecureContext?"Secure context available":"Not HTTPS; audio and microphone APIs may fail",window.isSecureContext?"ok":"fail");
+ show("WebAssembly",typeof WebAssembly==="object"?"Available":"Missing",typeof WebAssembly==="object"?"ok":"fail");
+ show("Web Audio",typeof(window.AudioContext||window.webkitAudioContext)==="function"?"Available":"Missing",typeof(window.AudioContext||window.webkitAudioContext)==="function"?"ok":"fail");
+ show("SpeechRecognition",typeof(window.SpeechRecognition||window.webkitSpeechRecognition)==="function"?"Available. May require a network speech recognition service.":"Not supported. Typed speech synthesis can still work.",typeof(window.SpeechRecognition||window.webkitSpeechRecognition)==="function"?"ok":"warn");
+ show("Memory guidance",navigator.deviceMemory?"Approximate device memory: "+navigator.deviceMemory+" GB":"Memory not reported by browser","warn");
+ await request("./studio/index.html","Pocket Studio HTML");
+ await request("./studio/app.js","Pocket application JavaScript");
+ await request("./studio/inference-worker.js","Pocket ONNX worker");
+ await request("./studio/sentencepiece.js","Pocket tokenizer (approximately 4 MB)",3000000);
+ await request("./studio/pocket-mic-addon.js","Direct microphone adapter");
+ await request("https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.all.min.js","ONNX Runtime CDN");
+ await request("https://huggingface.co/spaces/KevinAHM/pocket-tts-web/resolve/main/onnx/english_2026-04/bundle.json","Pocket model metadata");
+});
+$("mic").addEventListener("click",async()=>{
+ try{
+  if(!navigator.mediaDevices?.getUserMedia)throw Error("getUserMedia not supported");
+  const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+  stream.getTracks().forEach(t=>t.stop());
+  show("Microphone permission","Microphone track opened successfully, then was closed. No audio recorded.","ok");
+ }catch(e){show("Microphone permission","Blocked or unavailable: "+e.message,"fail")}
+});
+$("copy").addEventListener("click",async()=>{
+ const lines=report.map(r=>r.state.toUpperCase()+" - "+r.title+" - "+r.description).join("\n");
+ try{await navigator.clipboard.writeText("Pocket ONNX Diagnostic Report\n"+lines);$("copy").textContent="Copied"}catch(e){$("copy").textContent="Copy not permitted"}
+ setTimeout(()=>$("copy").textContent="Copy report",1800);
+});
+})();
+</script>
+</body>
+</html>
