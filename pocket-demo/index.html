@@ -1,158 +1,22 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#090f19">
-<title>Pocket TTS · Microphone Voice Change Experiment</title>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#080f19">
+<meta http-equiv="refresh" content="1;url=./studio/index.html">
+<title>Pocket TTS · Microphone-to-Voice Demo</title>
 <style>
-:root{color-scheme:dark;--bg:#080e18;--panel:#121e2e;--card:#1a2a3b;--text:#ebf6ff;--muted:#a4b5c6;--accent:#51d9d1;--border:#2d4152}
-*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(circle at 14% 1%,#183447,transparent 45%),var(--bg);font:15px/1.55 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--text)}
-header{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:18px max(4vw,20px);border-bottom:1px solid var(--border)}header strong{font-size:15px;letter-spacing:.14em}a{color:var(--accent);text-decoration:none}
-main{max-width:1570px;margin:0 auto;padding:26px 22px 40px}.eyebrow{font-size:12px;font-weight:700;letter-spacing:.18em;color:var(--accent)}h1{font-size:clamp(29px,4vw,52px);line-height:1.09;letter-spacing:-.04em;margin:8px 0 10px}h2{font-size:20px;margin:0 0 8px}p{color:var(--muted);margin:8px 0 16px}.intro{max-width:870px}
-.layout{display:grid;grid-template-columns:minmax(310px,390px) minmax(0,1fr);gap:18px;align-items:start;margin-top:22px}.card{background:var(--panel);border:1px solid var(--border);border-radius:17px;padding:21px}.work{padding:0;overflow:hidden}.workbar{padding:16px 21px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:12px;align-items:center}.workbar strong{font-size:14px}iframe{display:block;width:100%;height:890px;border:0;background:var(--bg)}
-label{display:block;margin:20px 0 6px;color:#d5e7f7;font-weight:700;font-size:13px}textarea{width:100%;min-height:104px;resize:vertical;color:var(--text);background:#0a1420;border:1px solid var(--border);border-radius:10px;padding:12px;font:inherit}button{font:inherit;font-weight:700;border:0;border-radius:10px;padding:12px 16px;background:var(--card);color:var(--text);cursor:pointer}button.primary{background:var(--accent);color:#07101a}button:disabled{opacity:.44;cursor:not-allowed}.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.pill{border:1px solid var(--border);padding:4px 10px;border-radius:100px;color:var(--muted);font-size:12px;white-space:nowrap}
-.status{margin-top:15px;border:1px solid var(--border);background:#0b1725;border-radius:11px;padding:12px;min-height:74px}.status b{display:block;font-size:13px}.status span{color:var(--muted);font-size:13px}
-.toggle{display:flex;gap:10px;align-items:center;margin:14px 0 0;font-weight:400;color:var(--muted)}.toggle input{accent-color:var(--accent)}
-.queue{margin-top:15px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;color:var(--muted);background:#0b1725;padding:11px;border-radius:10px;min-height:48px;max-height:150px;overflow:auto}
-ol{padding-left:22px;color:var(--muted)}li{margin:0 0 9px}.foot{margin-top:15px;font-size:13px;color:var(--muted)}
-@media(max-width:970px){.layout{grid-template-columns:1fr}.card{padding:18px}iframe{height:750px}}
+:root{color-scheme:dark}body{min-height:100vh;margin:0;display:grid;place-items:center;background:#08121c;color:#eef9ff;font:16px/1.5 system-ui,Segoe UI,Arial,sans-serif}
+main{padding:32px;max-width:650px;text-align:center}h1{font-size:30px;letter-spacing:-.04em;margin:0 0 12px}p{color:#aec4d2}a{color:#5aded0}a.button{display:inline-block;background:#5aded0;color:#061922;border-radius:11px;padding:13px 19px;text-decoration:none;font-weight:800}
 </style>
 </head>
 <body>
-<header><strong>◉ IRL VOICE CHANGER <span style="color:var(--accent)">/ POCKET LAB</span></strong><a href="../">← Engine Hub</a></header>
 <main>
-  <div class="eyebrow">EXPERIMENTAL · REAL POCKET TTS INFERENCE</div>
-  <h1>Speak a phrase. Hear it in a cloned voice.</h1>
-  <p class="intro">This demonstration connects microphone speech recognition to your existing Pocket Voice Studio’s real ONNX text-to-speech engine. It is <b>turn-by-turn speech conversion</b>: after the phrase is recognized, Pocket generates a new recording. It does not retain exact timing or all emotions, and it is not the same thing as zero-delay live VC.</p>
-  <div class="layout">
-    <section class="card">
-      <h2>Microphone → transcript → Pocket</h2>
-      <p>First, use the embedded Pocket Studio to select a built-in voice or clone your own recording. Wait for the model to finish loading. Then test here.</p>
-      <div class="actions"><span class="pill">1 · Set voice in Studio</span><span class="pill">2 · Speak here</span><span class="pill">3 · Hear generated audio</span></div>
-      <label for="spoken">Recognized or manually entered words</label>
-      <textarea id="spoken" maxlength="500" placeholder="Your live transcript appears here. Or type text here to test Pocket directly."></textarea>
-      <div class="actions">
-        <button class="primary" id="mic">🎙 Speak a phrase</button>
-        <button id="stop" disabled>■ Stop</button>
-        <button id="send">▶ Generate in Pocket</button>
-      </div>
-      <label class="toggle"><input type="checkbox" id="repeat"> Resume listening after generation (headphones recommended)</label>
-      <div class="status" role="status" aria-live="polite"><b id="state">Checking browser…</b><span id="detail">The speech recognition feature requires Chrome/Edge and microphone permission.</span></div>
-      <div class="queue" id="queue">No phrases queued.</div>
-      <h2 style="margin-top:25px">How it works</h2>
-      <ol>
-        <li>In Pocket Studio (right/below), upload or record a reference voice, or select a built-in voice.</li>
-        <li>Wait for real ONNX model loading, select a voice, then use the microphone or type a phrase.</li>
-        <li>When a phrase is recognized, this page injects the actual transcript into the same-origin Pocket Studio and clicks the real Generate button.</li>
-        <li>Listen to the generated stream and use Studio’s replay/WAV/MP3 controls.</li>
-      </ol>
-      <p class="foot"><b>Privacy:</b> Pocket synthesis and voice samples are processed locally in the browser. Your browser’s Web Speech recognition service may process spoken audio online. For entirely local recognition, use the native Pocket Windows studio with Whisper. Model weights download on first use.</p>
-      <p class="foot"><b>Audio feedback:</b> Use headphones. Speaker playback can be re-captured by an open microphone; the demonstration pauses listening during synthesis.</p>
-      <a href="https://github.com/tbenitz/A-Portable-Voice-Clone-Exe">Original Pocket Voice Studio source ↗</a>
-    </section>
-    <section class="card work">
-      <div class="workbar"><strong>Pocket TTS · real ONNX voice studio</strong><span class="pill" id="ready">Model loading…</span></div>
-      <iframe id="studio" src="./studio/index.html" title="Pocket TTS Voice Studio" allow="microphone; autoplay"></iframe>
-    </section>
-  </div>
+<h1>Pocket TTS · Live microphone experiment</h1>
+<p>Opening the real Pocket ONNX Studio with microphone-to-cloned-speech controls in the same page. This avoids iframe microphone/autoplay restrictions in the previous version.</p>
+<p><a class="button" href="./studio/index.html">Open Pocket Studio</a></p>
+<p>Choose a voice in the studio, then use <strong>Speak a phrase</strong> in the floating microphone panel. Recognition can use your browser's online service; generation happens on your device.</p>
 </main>
-<script>
-(()=>{
-  "use strict";
-  const $=id=>document.getElementById(id);
-  const frame=$("studio"), mic=$("mic"), stop=$("stop"), send=$("send");
-  const input=$("spoken"), queueLabel=$("queue");
-  const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
-  let recognizer=null, desiredListen=false, isListening=false, inFlight=false;
-  let seenGenerating=false, pending=[], resumeAfter=false, watchdog=0;
-  const state=(text,detail)=>{$("state").textContent=text;$("detail").textContent=detail||"";};
-  const draw=()=>{queueLabel.textContent=pending.length?pending.map((x,i)=>(i+1)+". "+x).join("\n"):"No phrases queued.";};
-  function getPocket(){
-    try {
-      const win=frame.contentWindow;
-      if(!win||win.location.origin!==location.origin) return null;
-      return win.__pocketApp||null;
-    } catch {return null;}
-  }
-  function stopListening(){
-    desiredListen=false;
-    if(recognizer&&isListening){try{recognizer.stop();}catch{}}
-    isListening=false; stop.disabled=true; mic.disabled=false;
-  }
-  function beginListening(){
-    if(!recognizer){state("Speech recognition unavailable","Type text and click Generate in Pocket instead.");return;}
-    if(isListening||inFlight)return;
-    try {
-      desiredListen=true; recognizer.start(); isListening=true;
-      mic.disabled=true; stop.disabled=false;
-      state("Listening…","Speak a phrase, then pause. The recognized words will be synthesized.");
-    } catch(e){isListening=false;state("Microphone unavailable",e.message);}
-  }
-  function enqueue(text){
-    const clean=String(text||"").trim().slice(0,500);
-    if(!clean)return;
-    pending.push(clean);
-    input.value=clean;draw();
-    state("Phrase recognized","Queued actual Pocket TTS generation; no fake audio will be played.");
-  }
-  function pump(){
-    const pocket=getPocket();
-    const ready=!!(pocket&&pocket.isWorkerReady&&!pocket.isVoiceEncoding);
-    $("ready").textContent=ready?"Pocket model loaded":"Model loading…";
-    if(inFlight){
-      if(pocket&&pocket.isGenerating)seenGenerating=true;
-      if(pocket&&seenGenerating&&!pocket.isGenerating){
-        inFlight=false;seenGenerating=false;
-        state("Generation finished","Audio playback, replay and download controls are inside the Pocket Studio.");
-        if(resumeAfter){resumeAfter=false;setTimeout(()=>beginListening(),2200);}
-      } else if(Date.now()-watchdog>180000){
-        inFlight=false;seenGenerating=false;resumeAfter=false;
-        state("Generation timed out","Review the Pocket Studio error/status panel.");
-      }
-    } else if(pending.length&&ready&&!pocket.isGenerating){
-      const button=frame.contentDocument&&frame.contentDocument.getElementById("btn-generate");
-      const textarea=frame.contentDocument&&frame.contentDocument.getElementById("text-input");
-      if(button&&!button.disabled&&textarea){
-        const next=pending.shift();draw();
-        textarea.value=next;
-        textarea.dispatchEvent(new Event("input",{bubbles:true}));
-        resumeAfter=desiredListen&&$("repeat").checked;
-        if(isListening&&recognizer){try{recognizer.stop();}catch{}}
-        desiredListen=false;isListening=false;mic.disabled=false;stop.disabled=true;
-        inFlight=true;seenGenerating=false;watchdog=Date.now();
-        state("Generating actual Pocket audio…","The real Pocket TTS model is synthesizing: "+next.slice(0,80));
-        button.click();
-      }
-    }
-  }
-  if(Recognition){
-    recognizer=new Recognition();
-    recognizer.lang="en-US";
-    recognizer.interimResults=true;
-    recognizer.continuous=false;
-    recognizer.onresult=e=>{
-      let final="";
-      for(let i=e.resultIndex;i<e.results.length;i++){
-        const result=e.results[i];
-        if(result.isFinal)final+=result[0].transcript+" ";
-        else input.value=result[0].transcript;
-      }
-      if(final){enqueue(final);try{recognizer.stop();}catch{}}
-    };
-    recognizer.onerror=e=>{isListening=false;mic.disabled=false;stop.disabled=true;state("Recognition error",e.error+". You can type the phrase manually.");};
-    recognizer.onend=()=>{isListening=false;mic.disabled=false;stop.disabled=true;
-      if(desiredListen&&!pending.length&&!inFlight)state("Mic stopped","Click Speak a phrase again.");
-    };
-    state("Ready to recognize speech","Select a Pocket voice first, then Speak a phrase.");
-  }else{mic.disabled=true;state("Web Speech unavailable","Use Chrome/Edge with microphone access, or type a phrase and click Generate.");}
-  mic.addEventListener("click",beginListening);
-  stop.addEventListener("click",()=>{stopListening();resumeAfter=false;state("Stopped","Microphone monitoring is off.");});
-  send.addEventListener("click",()=>enqueue(input.value));
-  frame.addEventListener("load",()=>state("Pocket Studio loaded","Wait for Pocket to finish downloading/initializing the model; choose your reference voice."));
-  window.setInterval(pump,300);
-  window.addEventListener("beforeunload",stopListening);
-})();
-</script>
+<script>window.location.replace("./studio/index.html?irl-mic=1");</script>
 </body>
 </html>
