@@ -43,6 +43,7 @@ class Hub:
         self.selected = tk.StringVar(value="beatrice")
         self.cuda = tk.BooleanVar(value=bool(self.settings.get("gpu", False)))
         self.cpu = tk.BooleanVar(value=bool(self.settings.get("cpu", True)))
+        self.llvc_live = tk.BooleanVar(value=bool(self.settings.get("llvc_live", True)))
         self.mean_model = tk.StringVar(value=self.settings.get("mean_model", "40ms"))
         self.reference = tk.StringVar(value=self.settings.get("reference", ""))
         self.source_file = tk.StringVar(value=self.settings.get("source_file", ""))
@@ -145,6 +146,9 @@ class Hub:
                                      values=["40ms", "120ms"], width=8, state="readonly")
         self.modelbox.pack(side="left")
         self.modelbox.bind("<<ComboboxSelected>>", lambda _: self.persist())
+        self.llvc_toggle = ttk.Checkbutton(controls, text="LLVC live microphone conversion (experimental; uncheck for file mode)",
+                                          variable=self.llvc_live, command=self.llvc_changed)
+        self.llvc_toggle.pack(anchor="w", padx=18, pady=(0, 10))
 
         paths = tk.Frame(right, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
         paths.pack(fill="x", pady=(0, 12))
@@ -202,9 +206,10 @@ class Hub:
         self.output_row.pack_forget()
         if key == "meanvc2":
             self.reference_row.pack(fill="x", padx=18, pady=4)
-        if key == "llvc":
+        if key == "llvc" and not self.llvc_live.get():
             self.source_row.pack(fill="x", padx=18, pady=4)
             self.output_row.pack(fill="x", padx=18, pady=4)
+        self.llvc_toggle.configure(state="normal" if key == "llvc" else "disabled")
         if key == "beatrice":
             self.buttons["beatrice"].pack(anchor="w", padx=18, pady=(0, 11))
         else:
@@ -212,6 +217,10 @@ class Hub:
         self.status.set(("Ready to launch" if engine_is_installed(key, self.settings) else "Setup needed") +
                         " · " + spec.title)
         self.refresh()
+
+    def llvc_changed(self):
+        self.persist()
+        self.select_engine("llvc")
 
     def write_log(self, line):
         self.events.put(("log", str(line)))
@@ -257,6 +266,7 @@ class Hub:
 
     def persist(self):
         self.settings.update(gpu=bool(self.cuda.get()), cpu=bool(self.cpu.get()),
+                             llvc_live=bool(self.llvc_live.get()),
                              mean_model=self.mean_model.get(),
                              reference=self.reference.get(), source_file=self.source_file.get(),
                              output=self.output.get())
@@ -268,12 +278,13 @@ class Hub:
             open_upstream(key)
             return
         self.persist()
+        gpu_choice = bool(self.cuda.get())
         self.installing = True
         self.status.set("Setting up " + ENGINES[key].title + " ...")
         self.refresh()
         def task():
             try:
-                setup_engine(key, self.write_log, bool(self.cuda.get()))
+                setup_engine(key, self.write_log, gpu_choice)
                 message = "Setup complete · " + ENGINES[key].title
             except Exception as exc:
                 self.write_log(f"SETUP ERROR: {exc}")
@@ -287,7 +298,8 @@ class Hub:
         try:
             args, cwd = launch_args(key, self.settings, reference=self.reference.get(),
                                    input_file=self.source_file.get(), cpu=self.cpu.get(),
-                                   mean_model=self.mean_model.get(), output_dir=self.output.get())
+                                   mean_model=self.mean_model.get(), output_dir=self.output.get(),
+                                   llvc_live=self.llvc_live.get())
             self.write_log("$ " + " ".join(args))
             self.process = subprocess.Popen(args, cwd=str(cwd), stdout=subprocess.PIPE,
                                             stderr=subprocess.STDOUT, text=True,
