@@ -6,6 +6,7 @@ on:
       - "index.html"
       - "online-test/**"
       - "pocket-demo/**"
+      - "tests/test_web_studio.py"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 permissions:
@@ -44,6 +45,11 @@ jobs:
           test "$(wc -c < pocket-demo/studio/sentencepiece.js)" -gt 3000000
           node --check pocket-demo/studio/pocket-mic-addon.js
           node --check pocket-demo/studio/inference-worker.js
+          node --input-type=module --check < pocket-demo/studio/app.js
+          node --input-type=module --check < pocket-demo/studio/PCMPlayerWorklet.js
+          node --input-type=module --check < pocket-demo/studio/studio-addon.js
+          node --check pocket-demo/studio/main-thread-worker-shim.js
+          python3 tests/test_web_studio.py
           node --check pocket-demo/studio/sentencepiece.js
           python3 - <<'PY'
           from pathlib import Path
