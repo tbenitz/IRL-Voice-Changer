@@ -38,7 +38,7 @@ assert(transferred.length>0,"Mic capture did not send any audio to the model pat
 const message=transferred[0];
 assert.equal(message.type,"audio");
 assert(message.data.length>=11000 && message.data.length<=12000,"Wrong capture chunk duration");
-assert(message.data.every(x=>x===.37),"Captured PCM corrupted");
+assert(message.data.every(x=>Math.abs(x-.37)<1e-5),"Captured PCM corrupted");
 c.port.onmessage({data:{type:"enable",enabled:false}});
 const silence=new Float32Array(length);
 c.process([[audio]],[[silence]]);
