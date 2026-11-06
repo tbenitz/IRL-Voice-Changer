@@ -1,0 +1,89 @@
+/* End-to-end RVC worker smoke test with fake ONNX session outputs.
+ * Exercises actual JS pipeline wiring only; real model weights NOT tested.
+ */
+const assert=require("node:assert/strict");
+const fs=require("node:fs");
+const vm=require("node:vm");
+const path=require("node:path");
+const source=fs.readFileSync(path.join(__dirname,"../live-vc/rvc-stream-worker.js"),"utf8");
+const msgs=[],stub={};
+class Tensor {
+ constructor(type,data,dims){this.type=type;this.data=data;this.dims=dims}
+}
+const rate=16000;
+let sessions=0,genCalls=0,featureCalls=0,pitchCalls=0;
+const fakeORT={
+ Tensor,env:{wasm:{}},
+ InferenceSession:{
+  async create(_bytes,_opts){
+   const index=sessions++;
+   if(index===0)return {
+    inputNames:["source"],inputMetadata:{source:{dimensions:[1,1,"samples"]}},outputNames:["features"],
+    async run(feeds){
+     featureCalls++;
+     assert(feeds.source instanceof Tensor);
+     const n=feeds.source.data.length,frames=Math.max(1,Math.floor(n/320));
+     const arr=new Float32Array(768*frames).fill(.12);
+     return {features:new Tensor("float32",arr,[1,768,frames])};
+    }
+   };
+   if(index===1)return {
+    inputNames:["waveform"],outputNames:["f0"],
+    async run(feeds){
+     pitchCalls++;
+     const n=feeds.waveform.data.length,frames=Math.ceil(n/160);
+     return {f0:new Tensor("float32",new Float32Array(frames).fill(210),[1,frames])};
+    }
+   };
+   return {
+    inputNames:["phone","phone_lengths","pitch","nsff0","sid","rnd"],
+    outputNames:["audio"],
+    async run(feeds){
+     genCalls++;
+     assert(feeds.phone instanceof Tensor);
+     assert(feeds.pitch instanceof Tensor);
+     assert.equal(feeds.phone.dims[2],768);
+     const count=feeds.phone.dims[1]*480,pcm=new Float32Array(count);
+     for(let i=0;i<count;i++)pcm[i]=.2*Math.sin(i*2*Math.PI*220/48000);
+     return {audio:new Tensor("float32",pcm,[1,1,count])};
+    }
+   };
+  }
+ }
+};
+const self={
+ onmessage:null,
+ postMessage(message){msgs.push(message)}
+};
+const context={
+ self, Float32Array,Uint8Array,BigInt64Array,Array,Number,Math,BigInt,Promise,
+ console,setTimeout,performance:{now:()=>Date.now()},
+ importScripts(){context.ort=fakeORT}
+};
+vm.runInNewContext(source,context);
+const wait=(ms=80)=>new Promise(r=>setTimeout(r,ms));
+(async()=>{
+ assert.equal(typeof self.onmessage,"function");
+ await self.onmessage({data:{
+  type:"init",voice:new ArrayBuffer(12),contentVec:new ArrayBuffer(12),
+  rmvpe:new ArrayBuffer(12),sampleRate:48000
+ }});
+ assert(msgs.some(x=>x.type==="ready"),"ONNX models failed to load");
+ assert.equal(sessions,3,"Sessions should be created only on init");
+ for(let c=0;c<2;c++){
+  const samples=new Float32Array(rate);
+  for(let i=0;i<samples.length;i++)samples[i]=.16*Math.sin(i*2*Math.PI*220/rate);
+  await self.onmessage({data:{type:"convert",pcm:samples,sampleRate:rate}});
+  const converted=msgs.filter(x=>x.type==="audio"&&!x.silence).at(-1);
+  assert(converted,"RVC generator produced no model output");
+  assert(converted.pcm instanceof Float32Array,"Output not float32");
+  assert(converted.pcm.some(x=>Math.abs(x)>.1),"Converted audio all silent");
+  assert(converted.pcm.every(Number.isFinite),"Converted audio contains invalid values");
+ }
+ assert.equal(sessions,3,"ONNX sessions recreated for every block: not streaming");
+ assert.equal(featureCalls,2);
+ assert.equal(pitchCalls,2);
+ assert.equal(genCalls,2);
+ assert(msgs.some(x=>x.type==="idle"),"Worker never released inference busy status");
+ console.log("PASS: persistent RVC ONNX sessions and two microphone chunks converted by content, F0 and generator pipeline (mock ONNX only).");
+})().catch(e=>{console.error(e);process.exitCode=1});
