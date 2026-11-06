@@ -32,10 +32,11 @@ class StudioSmokeTests(unittest.TestCase):
 
     def test_model_comparison_starts_locally(self):
         html = (ROOT / "online-test" / "index.html").read_text(encoding="utf-8")
-        self.assertIn('let selected="pocket"', html)
-        self.assertIn('src="about:blank"', html)
-        self.assertIn('data-engine="llvc"', html)
-        self.assertIn('id="provider-footer"', html)
+        self.assertIn('href="../live-vc/#rvc"', html)
+        self.assertIn('href="../live-vc/#live"', html)
+        self.assertIn('RVC ONNX', html)
+        self.assertNotIn('<iframe', html)
+        self.assertNotIn('hf.space', html)
 
     def test_microphone_transcription_disclosure(self):
         html = (STUDIO / "index.html").read_text(encoding="utf-8")
