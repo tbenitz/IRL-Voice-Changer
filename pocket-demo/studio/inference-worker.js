@@ -70,6 +70,7 @@ let voiceConditioningCache = new Map();
 let stTensors = [];
 let isGenerating = false;
 let isReady = false;
+let lowMemoryMode = true;
 
 const HF_CDN_BASE = "https://huggingface.co/spaces/KevinAHM/pocket-tts-web/resolve/main";
 
@@ -423,7 +424,9 @@ async function ensureEncoderSessionLoaded() {
     postMessage({ type: "status", status: "Loading voice encoder...", state: "loading" });
     const sessionOptions = {
         executionProviders: ["wasm"],
-        graphOptimizationLevel: "all",
+        graphOptimizationLevel: lowMemoryMode ? "basic" : "all",
+        enableCpuMemArena: !lowMemoryMode,
+        enableMemPattern: !lowMemoryMode,
     };
     if (checkIsIOS() || checkIsSafari()) {
         console.log("iOS or Safari detected: disabling CPU Memory Arena, Memory Pattern, and Graph Optimizations for voice encoder.");
@@ -584,7 +587,7 @@ async function loadOrt() {
 
     // Use ort.min.js (540KB, WASM-only backend) instead of ort.all.min.js (1.1MB, all backends)
     // to halve the JS parse memory overhead before WASM compilation.
-    const ortScript = isIOSOrSafari ? "ort.min.js" : "ort.all.min.js";
+    const ortScript = "ort.min.js"; // Pocket export uses WASM only; no unnecessary WebGPU backend
     const ortUrl = `${ORT_CDN_BASE}${ortScript}`;
 
     // Direct importScripts avoids the fetch→text→Blob→blobURL pipeline
@@ -610,18 +613,10 @@ async function loadOrt() {
     // Disable ORT internal logging to reduce memory allocations
     ort.env.logLevel = "error";
 
-    if (isIOSOrSafari) {
-        console.log("iOS/Safari: SIMD off, 1 thread, minimal memory footprint.");
-        ort.env.wasm.simd = false;
-        ort.env.wasm.numThreads = 1;
-        // Disable proxy worker — we're already in a worker, spawning another doubles overhead
-        ort.env.wasm.proxy = false;
-    } else {
-        ort.env.wasm.simd = true;
-        ort.env.wasm.numThreads = self.crossOriginIsolated
-            ? Math.min(navigator.hardwareConcurrency || 4, 8)
-            : 1;
-    }
+    ort.env.wasm.simd = !isIOSOrSafari;
+    ort.env.wasm.numThreads = (!lowMemoryMode && self.crossOriginIsolated) ? 2 : 1;
+    ort.env.wasm.proxy = false; // Avoid allocating another WASM worker
+
     precomputeFlowBuffers();
 }
 
@@ -641,7 +636,7 @@ async function loadBundle(language, { initialLoad = false } = {}) {
 
     await loadOrt();
 
-    postMessage({ type: "status", status: `Loading ${language} bundle...`, state: "loading" });
+    postMessage({ type: "status", status: `Fetching ${language} model manifest…`, state: "loading" });
     currentLanguage = language;
     currentBundleDir = bundleDir(language);
 
@@ -673,7 +668,9 @@ async function loadBundle(language, { initialLoad = false } = {}) {
 
     const sessionOptions = {
         executionProviders: ["wasm"],
-        graphOptimizationLevel: "all",
+        graphOptimizationLevel: lowMemoryMode ? "basic" : "all",
+        enableCpuMemArena: !lowMemoryMode,
+        enableMemPattern: !lowMemoryMode,
     };
 
     if (checkIsIOS() || checkIsSafari()) {
@@ -683,54 +680,26 @@ async function loadBundle(language, { initialLoad = false } = {}) {
         sessionOptions.graphOptimizationLevel = "disabled";
     }
 
-    let textCondRes, flowMainRes, flowFlowRes, decoderRes;
-    if (checkIsIOS() || checkIsSafari()) {
-        try {
-            postMessage({ type: "status", status: "Loading model 1/4...", state: "loading" });
-            textCondRes = await ort.InferenceSession.create(bundlePath(language, MODEL_STEMS.text_conditioner), sessionOptions);
-        } catch (e) {
-            throw new Error(`Failed to load model 1/4 (text_conditioner): ${e.message}`);
+    // Sequential ONNX session creation prevents simultaneous model allocations
+    // from exhausting Chromebook browser memory.
+    const stages = [
+        ["text_conditioner", MODEL_STEMS.text_conditioner],
+        ["flow_lm_main", MODEL_STEMS.flow_lm_main],
+        ["flow_lm_flow", MODEL_STEMS.flow_lm_flow],
+        ["mimi_decoder", MODEL_STEMS.mimi_decoder],
+    ];
+    const sessions = [];
+    try {
+        for (const [i, [label, stem]] of stages.entries()) {
+            postMessage({ type: "status", status: `Loading model ${i + 1}/4 (${label})…`, state: "loading" });
+            sessions.push(await ort.InferenceSession.create(bundlePath(language, stem), sessionOptions));
+            await new Promise(resolve => setTimeout(resolve, 50));
         }
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        try {
-            postMessage({ type: "status", status: "Loading model 2/4...", state: "loading" });
-            flowMainRes = await ort.InferenceSession.create(bundlePath(language, MODEL_STEMS.flow_lm_main), sessionOptions);
-        } catch (e) {
-            throw new Error(`Failed to load model 2/4 (flow_lm_main): ${e.message}`);
-        }
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        try {
-            postMessage({ type: "status", status: "Loading model 3/4...", state: "loading" });
-            flowFlowRes = await ort.InferenceSession.create(bundlePath(language, MODEL_STEMS.flow_lm_flow), sessionOptions);
-        } catch (e) {
-            throw new Error(`Failed to load model 3/4 (flow_lm_flow): ${e.message}`);
-        }
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        try {
-            postMessage({ type: "status", status: "Loading model 4/4...", state: "loading" });
-            decoderRes = await ort.InferenceSession.create(bundlePath(language, MODEL_STEMS.mimi_decoder), sessionOptions);
-        } catch (e) {
-            throw new Error(`Failed to load model 4/4 (mimi_decoder): ${e.message}`);
-        }
-    } else {
-        try {
-            const results = await Promise.all([
-                ort.InferenceSession.create(bundlePath(language, MODEL_STEMS.text_conditioner), sessionOptions),
-                ort.InferenceSession.create(bundlePath(language, MODEL_STEMS.flow_lm_main), sessionOptions),
-                ort.InferenceSession.create(bundlePath(language, MODEL_STEMS.flow_lm_flow), sessionOptions),
-                ort.InferenceSession.create(bundlePath(language, MODEL_STEMS.mimi_decoder), sessionOptions),
-            ]);
-            textCondRes = results[0];
-            flowMainRes = results[1];
-            flowFlowRes = results[2];
-            decoderRes = results[3];
-        } catch (e) {
-            throw new Error(`Failed parallel load of models: ${e.message}`);
-        }
+    } catch (e) {
+        for (const session of sessions) await releaseSession(session);
+        throw new Error(`Failed loading ${stages[sessions.length]?.[0] || "model"}: ${e.message}`);
     }
+    const [textCondRes, flowMainRes, flowFlowRes, decoderRes] = sessions;
 
     textConditionerSession = textCondRes;
     flowLmMainSession = flowMainRes;
@@ -804,6 +773,7 @@ self.onmessage = async (e) => {
 
     try {
         if (type === "load") {
+            lowMemoryMode = data?.profile !== "standard";
             await loadBundle(DEFAULT_LANGUAGE, { initialLoad: true });
             return;
         }
