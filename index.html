@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#080f1b">
+<title>IRL Voice Changer · Five AI Voice Engines</title>
+<style>
+:root{color-scheme:dark;--bg:#080e19;--card:#142233;--line:#2c4052;--t:#f0f7ff;--sub:#a1b6c6;--mint:#52dcd2;--blue:#75afff}
+*{box-sizing:border-box}body{margin:0;color:var(--t);font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:radial-gradient(circle at 70% 2%,#143650 0,transparent 43%),var(--bg)}
+a{color:var(--mint);text-decoration:none}a:hover{text-decoration:underline}
+.top{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:20px max(calc((100vw - 1160px)/2),24px);border-bottom:1px solid var(--line);font-weight:700}
+.top span{letter-spacing:.12em;font-size:13px}.top nav{display:flex;gap:16px;flex-wrap:wrap}
+main{max-width:1210px;margin:auto;padding:66px 24px}.kicker{letter-spacing:.2em;color:var(--mint);font-size:12px;font-weight:800}
+h1{max-width:800px;line-height:1.05;letter-spacing:-.055em;font-size:clamp(44px,7vw,78px);margin:10px 0 20px}h2{font-size:27px;letter-spacing:-.025em;margin:0 0 10px}
+.lead{max-width:760px;color:var(--sub);font-size:18px;line-height:1.65}.buttons{display:flex;flex-wrap:wrap;gap:12px;margin:28px 0 48px}
+.button{display:inline-flex;align-items:center;gap:8px;font-weight:750;background:var(--mint);color:#061522;padding:14px 20px;border-radius:11px}.button.secondary{background:var(--card);color:var(--t);border:1px solid var(--line)}
+.note{color:var(--sub);font-size:13px;line-height:1.6}
+.section-head{display:flex;justify-content:space-between;gap:18px;align-items:end;margin-bottom:18px}.section-head p{max-width:550px;color:var(--sub)}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px}.model{background:var(--card);border:1px solid var(--line);border-radius:17px;padding:22px;min-height:248px}.model .num{color:var(--mint);font-weight:800;font-size:12px}.model h3{font-size:23px;margin:17px 0 7px}.model p{color:var(--sub);margin:0 0 23px}.model small{display:block;color:#adc5d7;margin:13px 0}.highlight{border-color:#357d84}
+.flow{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:18px}.step{border-top:1px solid var(--line);padding:18px 0}.step b{display:block}.step p{color:var(--sub)}
+.banner{display:grid;grid-template-columns:1.5fr 1fr;gap:20px;background:#102a35;border:1px solid #2e6770;border-radius:18px;padding:28px;margin-top:38px}.banner p{color:var(--sub)}
+footer{border-top:1px solid var(--line);color:var(--sub);font-size:13px;padding:28px 24px;text-align:center}
+@media(max-width:850px){main{padding-top:35px}.grid{grid-template-columns:repeat(2,1fr)}.flow,.banner{grid-template-columns:1fr}}@media(max-width:570px){.grid{grid-template-columns:1fr}.section-head,.top{display:block}.top nav{margin-top:13px}h1{font-size:42px}.model{min-height:0}}
+</style>
+</head>
+<body>
+<div class="top"><span>◉ IRL / VOICE CHANGER</span><nav><a href="#models">Models</a><a href="./pocket-demo/">Pocket demo</a><a href="https://github.com/tbenitz/IRL-Voice-Changer">GitHub</a></nav></div>
+<main>
+<div class="kicker">VOICE CONVERSION / LOCAL-FIRST / WINDOWS</div>
+<h1>Five engines.<br>One place to start.</h1>
+<p class="lead">Switch between Beatrice v2, RVC, Seed-VC, LLVC and MeanVC2 without mixing their incompatible Python environments. Launch the actual original model tools for microphone conversion or file inference—never a fake playback demonstration.</p>
+<div class="buttons">
+<a class="button" href="https://github.com/tbenitz/IRL-Voice-Changer/actions/workflows/windows.yml">↓ Download Windows build</a>
+<a class="button secondary" href="./pocket-demo/">🎙 Try Pocket TTS microphone demo</a>
+<a class="button secondary" href="https://github.com/tbenitz/IRL-Voice-Changer#readme">Setup guide ↗</a>
+</div>
+<p class="note">GitHub Actions builds a portable launcher EXE; engine models and dependencies download separately during setup. Windows audio devices and GPU support must be configured per model. The launcher is not itself five bundled weight files.</p>
+<section id="models" style="margin-top:70px">
+<div class="section-head"><div><div class="kicker">ENGINES</div><h2>Choose the right conversion method.</h2></div><p>Each card represents an upstream project executable or inference script. Model weights and voice references are not bundled.</p></div>
+<div class="grid">
+<div class="model highlight"><div class="num">01 / LOW LATENCY</div><h3>Beatrice v2</h3><p>Low-latency live conversion through the official VCClient desktop build.</p><small>Live microphone · official Windows download</small><a href="https://github.com/w-okada/voice-changer">Official model ↗</a></div>
+<div class="model"><div class="num">02 / TRAINED VOICES</div><h3>RVC</h3><p>Real-time trained-voice conversion with model weights selected in upstream GUI.</p><small>Live microphone · .pth/.index models</small><a href="https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI">Official project ↗</a></div>
+<div class="model"><div class="num">03 / ZERO-SHOT</div><h3>Seed-VC Realtime</h3><p>Microphone conversion conditioned on a target reference recording.</p><small>Live microphone · GPU recommended</small><a href="https://github.com/jiaheguo521/seed-vc-realtime">Official project ↗</a></div>
+<div class="model"><div class="num">04 / STREAMING RESEARCH</div><h3>LLVC</h3><p>Convert WAV/audio files using the official inference command with simulated streaming.</p><small>File mode · not direct live mic in the published script</small><a href="https://github.com/KoeAI/LLVC">Official project ↗</a></div>
+<div class="model"><div class="num">05 / EXPERIMENTAL LIVE</div><h3>MeanVC2</h3><p>Research microphone mode with reference speaker and 40 ms or 120 ms configurations.</p><small>Live microphone · device/weight setup required</small><a href="https://github.com/ASLP-lab/MeanVC2">Official project ↗</a></div>
+<div class="model highlight"><div class="num">EXTRA / POCKET LAB</div><h3>Pocket TTS</h3><p>A genuine ONNX text-to-speech engine driven by recognized microphone words, not direct voice conversion.</p><small>Browser demo · phrase-by-phrase resynthesis</small><a href="./pocket-demo/">Open working demo ↗</a></div>
+</div>
+</section>
+<section class="banner"><div><div class="kicker">SEPARATE BROWSER DEMONSTRATION</div><h2>Does Pocket TTS work as a voice changer?</h2><p>In a turn-based sense: recognize what you said, feed those words into Pocket, and speak the output with a chosen voice. It cannot preserve exact timing like a speech-to-speech VC model.</p></div><div style="align-self:center"><a class="button" href="./pocket-demo/">Open Pocket demonstration →</a></div></section>
+<div class="flow"><div class="step"><b>01 · Download launcher</b><p>Get the Windows EXE from GitHub Actions. Run locally; no GUI installer or cloud speech service is required for the hub.</p></div><div class="step"><b>02 · Install an engine</b><p>The hub provisions isolated Python runtimes and official upstream code for supported models. Large weight downloads are separate.</p></div><div class="step"><b>03 · Start and route audio</b><p>Select the engine, import voices as required, and choose an input/output or Windows virtual cable inside the original engine application.</p></div></div>
+</main>
+<footer>IRL Voice Changer · Integration by tbenitz · Third-party engines retain their own licenses · Use only voices you have consent to use</footer>
+</body></html>
