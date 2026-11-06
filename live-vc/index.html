@@ -100,12 +100,12 @@ h3{font-size:15px;margin:0 0 9px}
     <div class="rvc-grid">
       <label class="file-input"><b>1 · Trained RVC voice checkpoint</b><small>Compatible RVC v2 ONNX; a three-second MP3 is <strong>not</strong> a trained checkpoint.</small><input id="rvc-model" type="file" accept=".onnx"></label>
       <label class="file-input"><b>2 · Speech to convert</b><small>MP3/WAV recording; 3–10 seconds recommended for 8 GB Chromebook</small><input id="rvc-audio" type="file" accept="audio/*"></label>
-      <label class="file-input"><b>3 · ContentVec model</b><small>ONNX feature extractor; can download on demand (~189 MB FP16 version)</small><input id="rvc-vec" type="file" accept=".onnx"></label>
-      <label class="file-input"><b>4 · RMVPE model</b><small>ONNX pitch estimator; can download on demand (~181 MB FP16 version)</small><input id="rvc-pitch" type="file" accept=".onnx"></label>
+      <label class="file-input"><b>3 · ContentVec model</b><small>ONNX feature extractor; can download on demand (~95 MB Q8 version)</small><input id="rvc-vec" type="file" accept=".onnx"></label>
+      <label class="file-input"><b>4 · RMVPE model</b><small>ONNX pitch estimator; can download on demand (~99 MB Q8 version)</small><input id="rvc-pitch" type="file" accept=".onnx"></label>
     </div>
     <div class="rvc-info"><strong>Want a voice model to try?</strong> <a href="https://huggingface.co/ampixa/nepali-rvc-voices-v1/tree/main/browser" target="_blank" rel="noopener">Licensed experimental RVC ONNX voice packs</a> are available. Compatibility with this runtime is unverified. RVC models are speaker-specific; importing a reference MP3 alone does not train one. The common models are large and may exceed an 8 GB browser's available memory.</div>
     <div class="actions">
-      <button type="button" class="secondary" id="get-core">Download ContentVec + RMVPE locally (~370 MB)</button>
+      <button type="button" class="secondary" id="get-core">Download quantized ContentVec + RMVPE (~194 MB)</button>
       <label style="font-size:12px;color:var(--muted)">Pitch <select id="rvc-shift" style="background:#162e43;color:var(--txt);border:1px solid #3a5a6d;border-radius:9px;padding:10px"><option value="0">0 semitones</option><option value="-5">−5 semitones</option><option value="5">+5 semitones</option><option value="-12">−12 semitones</option><option value="12">+12 semitones</option></select></label>
       <button class="primary" type="button" id="rvc-run">Convert with real RVC</button>
     </div>
@@ -216,7 +216,7 @@ async function stop() {
 function startRecording(){
  if(!live.started||!live.recDest)return;
  if(!window.MediaRecorder){status("Browser recording is unavailable.");return}
- const mime=["audio/webm;codecs=opus","audio/webm","audio/mp4"].find(MediaRecorder.isTypeSupported)||"";
+ const mime=["audio/webm;codecs=opus","audio/webm","audio/mp4"].find(type=>MediaRecorder.isTypeSupported(type))||"";
  const rec=new MediaRecorder(live.recDest.stream,mime?{mimeType:mime}:undefined);
  live.recorder=rec;live.recorded=[];
  rec.ondataavailable=e=>{if(e.data.size>0)live.recorded.push(e.data)};
@@ -233,14 +233,14 @@ labels();
 
 // Experimental actual RVC file-mode inference. NEVER pass off the DSP output as RVC.
 const RUNTIME={vec:null,pitch:null,busy:false};
-const CV_URL="https://huggingface.co/ampixa/rvc-browser-runtime/resolve/main/contentvec.fp16.onnx";
-const F0_URL="https://huggingface.co/ampixa/rvc-browser-runtime/resolve/main/rmvpe.fp16.onnx";
+const CV_URL="https://huggingface.co/TigreGotico/voiceclonnx-rvc/resolve/main/contentvec_768l12_q8.onnx";
+const F0_URL="https://huggingface.co/TigreGotico/voiceclonnx-rvc/resolve/main/rmvpe_q8.onnx";
 function note(message,bad=false){$("rvc-status").textContent=message;$("rvc-status").style.color=bad?"#ffb2ba":"#c3dee9";}
 async function downloadModel(url,filename,which){
  const response=await fetch(url);
  if(!response.ok)throw Error(filename+" download returned HTTP "+response.status);
  const size=Number(response.headers.get("content-length")||0);
- if(size>230e6)throw Error(filename+" is larger than expected");
+ if(size>135e6)throw Error(filename+" is larger than expected");
  const reader=response.body?.getReader();
  if(!reader)throw Error("Streaming response unavailable for "+filename);
  const parts=[];let read=0;
@@ -248,7 +248,7 @@ async function downloadModel(url,filename,which){
   const {done,value}=await reader.read();
   if(done)break;
   parts.push(value);read+=value.byteLength;
-  if(read>230e6)throw Error(filename+" exceeded 230 MB; stopped to protect memory");
+  if(read>135e6)throw Error(filename+" exceeded 135 MB; stopped to protect memory");
   note("Downloading "+filename+": "+(read/1e6).toFixed(1)+" MB"+(size?" / "+(size/1e6).toFixed(1)+" MB":"")+". Inference stays on this device.");
  }
  const file=new File(parts,filename,{type:"application/octet-stream"});
@@ -258,8 +258,8 @@ $("get-core").addEventListener("click",async()=>{
  if(RUNTIME.busy)return;
  RUNTIME.busy=true;$("get-core").disabled=true;$("rvc-run").disabled=true;
  try{
-  if(!$("rvc-vec").files?.length)await downloadModel(CV_URL,"contentvec.fp16.onnx","vec");
-  if(!$("rvc-pitch").files?.length)await downloadModel(F0_URL,"rmvpe.fp16.onnx","pitch");
+  if(!$("rvc-vec").files?.length)await downloadModel(CV_URL,"contentvec_768l12_q8.onnx","vec");
+  if(!$("rvc-pitch").files?.length)await downloadModel(F0_URL,"rmvpe_q8.onnx","pitch");
   note("ContentVec and RMVPE downloaded to browser memory. Choose a compatible RVC ONNX checkpoint and source recording.");
  }catch(e){note("Model download failed: "+e.message+". Upload the ONNX assets manually instead.",true)}
  finally{RUNTIME.busy=false;$("get-core").disabled=false;$("rvc-run").disabled=false}
