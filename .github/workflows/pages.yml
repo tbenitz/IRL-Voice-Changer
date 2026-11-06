@@ -8,6 +8,7 @@ on:
       - "live-vc/**"
       - "pocket-demo/**"
       - "tests/test_web_studio.py"
+      - "tests/test_live_voice.cjs"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 permissions:
@@ -47,6 +48,7 @@ jobs:
           test -f pocket-demo/studio/vendor/lame.min.js
           test "$(wc -c < pocket-demo/studio/sentencepiece.js)" -gt 3000000
           node --check live-vc/live-processor.js
+          node tests/test_live_voice.cjs
           node --check pocket-demo/studio/pocket-mic-addon.js
           node --check pocket-demo/studio/inference-worker.js
           node --input-type=module --check < pocket-demo/studio/app.js
