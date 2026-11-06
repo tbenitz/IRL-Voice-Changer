@@ -297,6 +297,8 @@ class PocketVoice {
   }
 
   modelFailed(message) {
+    this.worker?.terminate?.();
+    this.worker = null;
     this.isModelLoading = false;
     this.isWorkerReady = false;
     this.isVoiceEncoding = false;
@@ -315,7 +317,7 @@ class PocketVoice {
   noteLoadProgress(status) {
     if (!this.isModelLoading) return;
     this.runtimeDetail.textContent = status;
-    const match = /Loading model (\\d)\\/4/i.exec(status);
+    const match = /Loading model ([0-9])[/]4/i.exec(status);
     if (match) this.modelProgress.value = Math.max(0, Number(match[1]) - 1);
   }
 
