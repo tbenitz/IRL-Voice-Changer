@@ -18,6 +18,7 @@ class IRLVoiceProcessor extends AudioWorkletProcessor {
     this.enabled = false;
     this.grain = Math.max(1024, Math.round(sampleRate * 0.055));
     this.lowpass = 0;
+    this.envelope = 0;
     this.sampleRateValue = sampleRate;
     this.counter = 0;
     this.inputEnergy = 0;
@@ -40,7 +41,7 @@ class IRLVoiceProcessor extends AudioWorkletProcessor {
       } else if (d.type === "enable") {
         this.enabled = Boolean(d.value);
         if (!this.enabled) this.buffer.fill(0);
-        this.write = 0; this.total = 0; this.clock = 0; this.lowpass = 0;
+        this.write = 0; this.total = 0; this.clock = 0; this.lowpass = 0; this.envelope = 0;
       }
     };
   }
@@ -72,8 +73,9 @@ class IRLVoiceProcessor extends AudioWorkletProcessor {
       this.total++;
       this.clock++;
       const amp = Math.abs(x);
+      this.envelope = this.envelope*0.995 + amp*0.005;
       this.inputEnergy += x*x;
-      if (this.total <= grain*3 || amp < this.gate && this.total < grain*4) continue;
+      if (this.total <= grain*3) continue;
       const phase = (this.clock % grain) / grain;
       const p2 = (phase + 0.5) % 1;
       const w1 = 0.5 - 0.5*Math.cos(2*Math.PI*phase);
@@ -84,7 +86,8 @@ class IRLVoiceProcessor extends AudioWorkletProcessor {
       this.lowpass += alpha*(pitched-this.lowpass);
       const altered = this.lowpass*(1 + this.saturation*4);
       const colored = Math.tanh(altered);
-      const y = Number.isFinite(colored) ? this.volume*colored : 0;
+      const gateGain = Math.max(0, Math.min(1, (this.envelope - this.gate * 0.55) / (this.gate * 1.3)));
+      const y = Number.isFinite(colored) ? this.volume*colored*gateGain : 0;
       output[i] = y;
       this.outputEnergy += y*y;
     }
