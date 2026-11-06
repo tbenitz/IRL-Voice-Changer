@@ -29,7 +29,7 @@ Previously, the example loaded the Pocket Studio inside an iframe, and the new s
 
 We now publish the full Pocket ONNX studio JavaScript, tokenizer and inference worker directly in this repository under the pocket-demo/studio folder. The pocket-demo entry redirects to the full studio with direct microphone controls built into the **same document**, avoiding iframe audio permissions.
 
-To test Pocket, wait for the real model to finish loading, select or clone a permitted voice, and generate typed speech first. Then click **Speak a phrase** in the floating microphone panel. Your spoken words are recognized and handed to the real Pocket ONNX synth. If speech recognition is unavailable, type a phrase and click **Generate words** instead.
+To test Pocket on a Chromebook, open the full Studio, keep the default **Chromebook / 8 GB — low memory** setting, press **Load Pocket model**, and wait for all four ONNX stages to finish. Select a built-in voice first and generate typed speech, then record or upload a permitted reference voice if desired. The English asset bundle is roughly 200 MB on disk and may take considerably more RAM during initialization; success is device-dependent. Then click **Speak a phrase** in the floating microphone panel. Your spoken words are recognized and handed to the real Pocket ONNX synth. If speech recognition is unavailable, type a phrase and click **Generate words** instead.
 
 Pocket generation is local in the browser, but the speech recognition part may use your browser's online transcription service. It does not preserve exact vocal timing or emotion, and model weight downloads can be large on low-memory devices.
 
@@ -85,14 +85,16 @@ Settings and upstream engines are saved under the user-local IRLVoiceChanger dat
 
 The separate [pocket-demo/index.html](pocket-demo/index.html) is a turn-by-turn proof of concept that uses the **real Pocket ONNX browser inference** from your existing [A-Portable-Voice-Clone-Exe](https://github.com/tbenitz/A-Portable-Voice-Clone-Exe). On Pages deployment, the workflow copies the working Pocket Studio source to the same origin underneath the new demo.
 
-1. Open the Pocket demo URL and wait for ONNX model initialization.
-2. In the embedded Pocket Voice Studio, select a voice or upload a reference recording you own or have permission to use.
+1. Open the Pocket demo URL, leave **Chromebook / 8 GB — low memory** selected, and click **Load Pocket model**. It downloads on demand and creates one session at a time instead of loading all the models concurrently.
+2. In the full Pocket Voice Studio, select a built-in voice and first generate a short typed sample. Optionally upload or record a short reference from a voice you own or have permission to use.
 3. Click **Speak a phrase**. The browser recognizes the spoken words, and this page passes the actual recognized text to the embedded Pocket Studio's genuine Generate button.
 4. Listen to the output, replay it, and export WAV or MP3 via the real Pocket Studio.
 
 Pocket synthesis runs in-browser, but the microphone recognition stage uses the browser's Web Speech API, which **may process speech online** depending on browser and OS. This is not a fully local live microphone converter. It must recognize an utterance before the TTS engine generates a new one. This changes the vocal identity but not the user's exact vocal timing, emotion or pitch contours.
 
 For a fully local speech-to-text frontend, the original Windows Pocket project has a Whisper option. The demonstration is a **separate HTML page** that relies on same-origin Pocket assets; opening the file directly from the computer without the source app files will not work.
+
+**Chromebook limitations:** The Pocket ONNX TTS engine is genuine CPU/WebAssembly inference and can run inside ChromeOS without installing Windows or Python. Its on-device performance is not guaranteed on every 8 GB system. Beatrice, RVC, Seed-VC and MeanVC2 use third-party hosted preview pages from the [model lab](online-test/), while LLVC currently offers listening samples only; the GitHub Pages site does not run those five engines locally.
 
 ## GitHub Actions and deployment
 
