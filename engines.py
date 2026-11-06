@@ -179,8 +179,13 @@ def setup_engine(key: str, log, gpu: bool = False):
                                "--index-url", "https://download.pytorch.org/whl/cu128"], src, log)
         log("Seed-VC installed; first GUI launch may download checkpoint/config from Hugging Face.")
     elif key == "llvc":
-        run_logged(cmd + ["-r", "requirements.txt"], src, log)
-        run_logged(cmd + ["sounddevice>=0.5,<1"], src, log)
+        # The upstream requirements include training-only fairseq, gradio and
+        # unrelated RVC tooling. Install the actual inference dependencies only
+        # to avoid fragile Windows builds and accidental extra packages.
+        run_logged(cmd + ["torch==2.4.1", "torchaudio==2.4.1",
+                          "--index-url", "https://download.pytorch.org/whl/cpu"], src, log)
+        run_logged(cmd + ["speechbrain==1.0.3", "auraloss", "librosa", "numpy",
+                          "scipy", "tqdm", "huggingface_hub", "sounddevice>=0.5,<1"], src, log)
         live_script = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "llvc_live.py"
         if not live_script.is_file():
             raise RuntimeError("LLVC live adapter was not bundled with the executable.")
