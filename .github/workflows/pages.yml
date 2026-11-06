@@ -5,6 +5,7 @@ on:
     paths:
       - "index.html"
       - "online-test/**"
+      - "live-vc/**"
       - "pocket-demo/**"
       - "tests/test_web_studio.py"
       - ".github/workflows/pages.yml"
@@ -33,6 +34,8 @@ jobs:
         run: |
           set -euo pipefail
           test -f online-test/index.html
+          test -f live-vc/index.html
+          test -f live-vc/live-processor.js
           test -f pocket-demo/index.html
           test -f pocket-demo/diagnostics.html
           test -f pocket-demo/studio/index.html
@@ -43,6 +46,7 @@ jobs:
           test -f pocket-demo/studio/studio-addon.js
           test -f pocket-demo/studio/vendor/lame.min.js
           test "$(wc -c < pocket-demo/studio/sentencepiece.js)" -gt 3000000
+          node --check live-vc/live-processor.js
           node --check pocket-demo/studio/pocket-mic-addon.js
           node --check pocket-demo/studio/inference-worker.js
           node --input-type=module --check < pocket-demo/studio/app.js
@@ -54,7 +58,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import re
-          for name in ("online-test/index.html", "pocket-demo/index.html",
+          for name in ("online-test/index.html", "live-vc/index.html", "pocket-demo/index.html",
                        "pocket-demo/diagnostics.html"):
               content = Path(name).read_text(encoding="utf-8")
               blocks = re.findall(r"<script[^>]*>([\s\S]*?)</script>", content)
@@ -71,6 +75,7 @@ jobs:
           cp index.html _site/index.html
           cp -a pocket-demo _site/pocket-demo
           cp -a online-test _site/online-test
+          cp -a live-vc _site/live-vc
           touch _site/.nojekyll
       - uses: actions/upload-pages-artifact@v3
         with:
