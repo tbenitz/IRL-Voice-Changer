@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>IRL Pocket TTS · Voice-to-Voice Browser Experiment</title>
-  <meta name="description" content="Record or upload a short audio clip, clone the voice, and generate speech — all client-side via ONNX Runtime. No server, no data leaves your browser.">
+  <meta name="description" content="Test Pocket TTS locally in a browser with a low-memory Chromebook preset. Model files download from Hugging Face; browser transcription may use a server.">
   <meta name="theme-color" content="#070d17">
   <meta name="author" content="tbenitz">
   <meta name="robots" content="index, follow">
@@ -17,7 +17,7 @@
   <meta property="og:type" content="website">
   <meta property="og:title" content="Pocket Voice — Clone any voice in your browser">
   <meta property="og:description" content="Record or upload audio, clone voices, generate speech — 100% client-side via ONNX Runtime Web. No server needed.">
-  <meta property="og:image" content="https://h3manth.com/ai/pocket-voice/og-image.png">
+  <meta property="og:image" content="https://tbenitz.github.io/IRL-Voice-Changer/pocket-demo/studio/favicon.svg">
   <meta property="og:image:width" content="1024">
   <meta property="og:image:height" content="1024">
   <meta property="og:image:alt" content="Pocket Voice — Clone any voice in your browser">
@@ -27,8 +27,8 @@
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Pocket Voice — Browser Voice Cloning">
   <meta name="twitter:description" content="Clone any voice in your browser. Record or upload audio, type text, hear it spoken. No server, fully private.">
-  <meta name="twitter:image" content="https://h3manth.com/ai/pocket-voice/og-image.png">
-  <meta name="twitter:creator" content="@anthropic">
+  <meta name="twitter:image" content="https://tbenitz.github.io/IRL-Voice-Changer/pocket-demo/studio/favicon.svg">
+  <meta name="twitter:creator" content="tbenitz">
 
   <!-- AI Agent Discovery -->
   <meta name="ai:description" content="Pocket Voice is a browser-based voice cloning app. It uses Pocket TTS via ONNX Runtime Web to clone voices from mic recordings or uploaded audio, and generate text-to-speech output. Fully client-side, no server required.">
@@ -47,7 +47,7 @@
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
     "browserRequirements": "Requires a modern browser with WebAssembly, AudioWorklet, and MediaRecorder support.",
     "softwareVersion": "2.0",
-    "creator": { "@type": "Person", "name": "Hemanth HM", "url": "https://h3manth.com" }
+    "creator": { "@type": "Person", "name": "tbenitz" }
   }
   </script>
 
@@ -57,11 +57,22 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Albert+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Alumni+Sans:wght@100;300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Albert+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Alumni+Sans:wght@100;300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"></noscript>
 
-  <link rel="stylesheet" href="style.css?v=20261105-ui4">
-<link rel="stylesheet" href="./theme.css?v=20261105-ui4">
+  <link rel="stylesheet" href="style.css?v=20261106-cb1">
+<link rel="stylesheet" href="./theme.css?v=20261106-cb1">
+<style>
+.device-setup{margin:0 0 25px;padding:22px;border:1px solid #3a7779;border-radius:16px;background:linear-gradient(115deg,#0b242c,#112239);color:#e9f7fa}
+.device-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.device-head h3{font-size:clamp(20px,3vw,27px);margin:4px 0 7px}.device-head p{max-width:780px;color:#bbd2db;font-size:14px;line-height:1.6;margin:0}
+.device-eyebrow{letter-spacing:.12em;color:#5adbd0;font-weight:800;font-size:11px}.device-badge{white-space:nowrap;border:1px solid #4c737c;padding:6px 11px;border-radius:99px;font-size:12px;color:#c5e7ea}
+.device-controls{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin:19px 0 13px}.device-controls label{display:grid;gap:6px;font-size:12px;font-weight:750;flex:1;min-width:235px}
+.device-controls select{width:100%;background:#081825;color:#fff;border:1px solid #52737e;padding:12px;border-radius:9px;font:14px system-ui}
+.device-controls button{min-height:43px;border-radius:9px;cursor:pointer;padding:10px 17px;font:700 14px system-ui}.device-start{background:#58ded0;border:0;color:#061d25}.device-retry{background:transparent;border:1px solid #70aeb5;color:#e8ffff}
+.device-controls button:disabled{opacity:.5;cursor:wait}.device-setup p#runtime-detail{margin:8px 0;color:#dbf2f6;font-size:13px;overflow-wrap:anywhere}
+.device-setup progress{width:100%;height:8px;margin:7px 0;accent-color:#58ded0}.device-help{font-size:12px;color:#b7cbd4;margin:7px 0 0}.device-help a{color:#6df2e2;text-decoration:underline}
+@media(max-width:600px){.device-setup{padding:16px}.device-head{flex-direction:column}.device-badge{align-self:flex-start}.device-controls button{width:100%}}
+</style>
 </head>
 <body>
-<header class="studio-nav"><a class="studio-logo" href="#hero"><span class="logo-mark">◉</span> POCKET<span>STUDIO</span></a><nav aria-label="Navigation"><a href="#app">Voice creator</a><a href="#studio-experience">Replay and exports</a><a href="#download-suite">Windows software</a></nav></header>
+<header class="studio-nav"><a class="studio-logo" href="#hero"><span class="logo-mark">◉</span> POCKET<span>STUDIO</span></a><nav aria-label="Navigation"><a href="../../online-test/">All voice models</a><a href="#app">Voice creator</a><a href="#studio-experience">Replay and exports</a><a href="#download-suite">Windows software</a></nav></header>
 
 <div class="grain" aria-hidden="true"></div>
 
@@ -70,7 +81,7 @@
 <section class="hero" id="hero">
   <span class="hero__eyebrow">POCKET TTS · PRIVATE VOICE CLONING</span>
   <h1 class="hero__title">Create a voice.<br><em>Take it anywhere.</em></h1>
-  <p class="hero__subtitle">Record or upload a voice, hear real Pocket TTS output, replay the generated audio, download WAV or MP3, and create your own Windows voice application.</p>
+  <p class="hero__subtitle">Try real Pocket TTS on your Chromebook before installing anything. Choose a voice, hear synthesized speech, replay it and export WAV or MP3.</p>
   <div class="hero__actions">
     <a href="#app" class="btn-primary">
       Open voice studio
@@ -87,7 +98,7 @@
     <div class="hero-feature">
       <svg class="hero-feature__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
       <h2 class="hero-feature__title">Zero Server</h2>
-      <p class="hero-feature__desc">ONNX models from HuggingFace CDN. Inference via WebAssembly. Nothing leaves your machine.</p>
+      <p class="hero-feature__desc">Models download from Hugging Face. Pocket voice synthesis runs locally via WebAssembly.</p>
     </div>
     <div class="hero-feature">
       <svg class="hero-feature__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
@@ -106,6 +117,23 @@
       <p class="app-section__sub">Step 1: Upload or record. Step 2: Generate, listen, replay and export. Step 3: Choose your Windows application.</p>
     </header>
 
+    <section class="device-setup" id="model-setup" aria-labelledby="model-setup-title">
+      <div class="device-head">
+        <div><span class="device-eyebrow">ON-DEVICE · POCKET TTS</span><h3 id="model-setup-title">Load a real voice model to test</h3>
+        <p>Start with the Chromebook preset on an 8 GB device. The Pocket English ONNX bundle downloads roughly 200 MB; browser memory use is higher. Load one language at a time.</p></div>
+        <span class="device-badge" id="model-ready-indicator">Not loaded</span>
+      </div>
+      <div class="device-controls">
+        <label for="runtime-profile">Memory profile
+          <select id="runtime-profile"><option value="low">Chromebook / 8 GB — low memory (recommended)</option><option value="standard">Standard — faster if supported</option></select>
+        </label>
+        <button type="button" id="btn-load-model" class="device-start">Load Pocket model (~200 MB)</button>
+        <button type="button" id="btn-retry-model" class="device-retry" hidden>Retry load</button>
+      </div>
+      <p id="runtime-detail" role="status" aria-live="polite">The model will not load until you press the button. Pocket synthesis runs locally using WebAssembly, not a remote inference API. Model files are downloaded from Hugging Face.</p>
+      <progress id="model-progress" aria-label="Model loading stages" max="4" value="0" hidden></progress>
+      <p class="device-help">To compare RVC, Beatrice, Seed-VC, MeanVC2 and LLVC, open the <a href="../../online-test/">voice model comparison lab</a>. Those engines are not currently runnable on-device in this Pocket studio. Browser speech recognition may use an online service.</p>
+    </section>
     <div class="app-grid">
       <!-- LEFT COLUMN: Voice Controls -->
       <div>
@@ -255,9 +283,9 @@
 </footer>
 
 <script src="main-thread-worker-shim.js?v=2.0.9"></script>
-<script type="module" src="app.js?v=20261105-ui4"></script>
+<script type="module" src="app.js?v=20261106-cb1"></script>
 <script src="./vendor/lame.min.js"></script>
-<script type="module" src="./studio-addon.js?v=20261105-ui4"></script>
-<script src="./pocket-mic-addon.js?v=20261106-1" defer></script>
+<script type="module" src="./studio-addon.js?v=20261106-cb1"></script>
+<script src="./pocket-mic-addon.js?v=20261106-cb1" defer></script>
 </body>
 </html>
