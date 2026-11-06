@@ -28,7 +28,7 @@ Settings and upstream engines are saved under the user-local IRLVoiceChanger dat
 | [Beatrice v2](https://github.com/w-okada/voice-changer) | Download official VCClient desktop version and select its EXE | Compatible Beatrice voice model via VCClient | **Yes** |
 | [RVC](https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI) | Python 3.12 isolated environment, realtime_gui.py | RVC .pth voice model, optional .index, HuBERT and RMVPE weights | **Yes** |
 | [Seed-VC Realtime](https://github.com/jiaheguo521/seed-vc-realtime) | Python 3.10 isolated environment, real-time-gui.py | Reference recording in upstream GUI; default model may download automatically | **Yes, but delayed; GPU recommended** |
-| [LLVC](https://github.com/KoeAI/LLVC) | Python 3.11 isolated environment, infer.py with -s streaming-simulation option | Input audio file selected in hub; pretrained checkpoint download during setup | **Not in published CLI** (file conversion) |
+| [LLVC](https://github.com/KoeAI/LLVC) | Python 3.11 venv; packaged experimental microphone adapter, or official infer.py -s file mode | Pretrained checkpoint downloaded at setup; select live mic or file in hub | **Yes via new experimental adapter; file option too** |
 | [MeanVC2](https://github.com/ASLP-lab/MeanVC2) | Python 3.11 isolated environment, runtime/run_rt.py with --mode realtime | Reference target-speaker WAV; model setup downloads checkpoints | **Yes, experimental** |
 
 **Scope:** The application is a common **installation, launch and control center** for the real upstream engines. They do NOT share one unified low-level inference pipeline: each engine has its own model format, voice management and audio device implementation. No button fabricates converted audio. An engine must be installed and correctly configured before it can produce a transformed voice.
@@ -41,7 +41,7 @@ Settings and upstream engines are saved under the user-local IRLVoiceChanger dat
 
 **Seed-VC:** Set up installs the upstream environment. Starting its GUI may fetch the official default checkpoint/config. Select a reference audio and configure microphone and speaker in its own UI. Real-time voice conversion requires a suitable GPU for practical latency.
 
-**LLVC:** Pick an input audio file in the hub and launch. This calls the real upstream inference command with the simulated-streaming switch; the result is saved to the chosen output folder. This version deliberately does NOT claim to convert a live microphone feed using LLVC because the published infer.py is a file converter.
+**LLVC:** By default the hub runs the bundled experimental llvc_live.py microphone adapter, which calls the genuine upstream model with persistent streaming buffers in a dedicated inference thread (not a pitch-shift placebo). It uses your system's default audio devices at 16 kHz. Results depend on CPU speed and hardware; underruns are logged. For the official upstream file converter, uncheck LLVC live microphone mode, browse an audio file and output folder, and start. The upstream infer.py itself remains file-only.
 
 **MeanVC2:** Set up runs the upstream initialization script to fetch checkpoints. Supply a target-speaker WAV, select the 40ms or 120ms model, choose CPU/CUDA, and launch. MeanVC2's runtime uses the system-default input/output devices.
 
@@ -75,12 +75,12 @@ For a fully local speech-to-text frontend, the original Windows Pocket project h
 Build the EXE locally (Windows Python):
 
     python -m pip install pyinstaller
-    pyinstaller --onefile --windowed --name IRL-Voice-Changer hub.py
+    pyinstaller --onefile --windowed --add-data "llvc_live.py;." --name IRL-Voice-Changer hub.py
 
 Run source-level tests:
 
     python -m unittest discover -s tests -v
-    python -m compileall -q hub.py engines.py
+    python -m compileall -q hub.py engines.py llvc_live.py
 
 **Testing scope:** GitHub Actions can test code and compile a Windows executable. It cannot test your actual sound devices, graphics driver, low-latency audio behavior or whether a licensed model weight file is present. A real Windows PC is required for those tests.
 
