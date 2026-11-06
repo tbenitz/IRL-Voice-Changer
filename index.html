@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#080f1b">
-<title>IRL Voice Changer · Five AI Voice Engines</title>
+<title>IRL Voice Changer · Live Microphone & RVC Testing</title>
 <style>
 :root{color-scheme:dark;--bg:#080e19;--card:#142233;--line:#2c4052;--t:#f0f7ff;--sub:#a1b6c6;--mint:#52dcd2;--blue:#75afff}
 *{box-sizing:border-box}body{margin:0;color:var(--t);font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:radial-gradient(circle at 70% 2%,#143650 0,transparent 43%),var(--bg)}
@@ -24,18 +24,20 @@ footer{border-top:1px solid var(--line);color:var(--sub);font-size:13px;padding:
 </style>
 </head>
 <body>
-<div class="top"><span>◉ IRL / VOICE CHANGER</span><nav><a href="./online-test/">Try models online</a><a href="#models">Models</a><a href="./pocket-demo/">Pocket TTS</a><a href="https://github.com/tbenitz/IRL-Voice-Changer">GitHub</a></nav></div>
+<div class="top"><span>◉ IRL / VOICE CHANGER</span><nav><a href="./live-vc/">Live voice changer</a><a href="./online-test/">Model comparisons</a><a href="#models">Models</a><a href="./pocket-demo/">Pocket TTS</a><a href="https://github.com/tbenitz/IRL-Voice-Changer">GitHub</a></nav></div>
 <main>
-<div class="kicker">TEST ONLINE FIRST / INSTALL IF YOU LIKE IT</div>
-<h1>Hear the voices.<br>Then decide.</h1>
-<p class="lead">Try Beatrice v2, RVC, Seed-VC and MeanVC2 through hosted browser demos before installing. Compare LLVC using its official audio samples, and run real Pocket TTS ONNX in your browser. If you like a model, use the Windows hub to launch its actual live inference engine.</p>
+<div class="kicker">LIVE VOICE TRANSFORMATION · CHROMEBOOK READY</div>
+<h1>Talk in.<br>Hear a changed voice.</h1>
+<p class="lead">Start with a live browser microphone voice changer using on-device DSP pitch and tone transformation. Then test actual neural RVC conversion with an ONNX checkpoint in the experimental RVC recording lab. Other engine demos are hosted, while the Windows desktop app runs their native live versions.</p>
 <div class="buttons">
-<a class="button" href="./online-test/">🎙 Test voice models online</a>
+<a class="button" href="./live-vc/">🎙 Start live mic voice changer</a>
+<a class="button secondary" href="./live-vc/#rvc">Test a real RVC model ↗</a>
+<a class="button secondary" href="./online-test/">Compare other VC models</a>
 <a class="button secondary" href="https://github.com/tbenitz/IRL-Voice-Changer/actions/workflows/windows.yml">↓ Download Windows build</a>
-<a class="button secondary" href="./pocket-demo/">🎙 Try Pocket TTS microphone demo</a>
+<a class="button secondary" href="./pocket-demo/">Separate Pocket TTS experiment</a>
 <a class="button secondary" href="https://github.com/tbenitz/IRL-Voice-Changer#readme">Setup guide ↗</a>
 </div>
-<p class="note">Online AI conversions run through public third-party hosted services and may have queues or require a compatible voice model. LLVC currently has listening samples only. Pocket TTS inference runs inside your browser; microphone speech recognition may use a browser service. The desktop launcher installs model dependencies separately.</p>
+<p class="note"><strong>Important distinction:</strong> The browser live microphone changer is real-time DSP, not RVC voice identity cloning. The ONNX RVC model lab converts uploaded recordings, not a live microphone stream. These features are separate, labeled honestly, and neither sends microphone audio to an inference server. The Windows launcher supports native real-time neural engines.</p>
 <section id="models" style="margin-top:70px">
 <div class="section-head"><div><div class="kicker">ENGINES</div><h2>Choose the right conversion method.</h2></div><p>Each card represents an upstream project executable or inference script. Model weights and voice references are not bundled.</p></div>
 <div class="grid">
@@ -44,11 +46,11 @@ footer{border-top:1px solid var(--line);color:var(--sub);font-size:13px;padding:
 <div class="model"><div class="num">03 / ZERO-SHOT</div><h3>Seed-VC Realtime</h3><p>Use a short target recording to convert speech without training.</p><small>Desktop realtime · online zero-shot demo</small><a href="./online-test/?model=seed">Try online ↗</a></div>
 <div class="model"><div class="num">04 / STREAMING RESEARCH</div><h3>LLVC</h3><p>Experimental local microphone converter, with official published before/after audio comparisons.</p><small>Online listening demo only · local live mic</small><a href="./online-test/?model=llvc">Hear official samples ↗</a></div>
 <div class="model"><div class="num">05 / EXPERIMENTAL LIVE</div><h3>MeanVC2</h3><p>Try a source and reference voice in the hosted ZeroGPU demo.</p><small>Desktop live mic · online zero-shot demo</small><a href="./online-test/?model=mean">Try online ↗</a></div>
-<div class="model highlight"><div class="num">EXTRA / POCKET LAB</div><h3>Pocket TTS</h3><p>Genuine browser ONNX speech generation, now with same-document microphone controls.</p><small>Browser inference · phrase-by-phrase</small><a href="./pocket-demo/">Try fixed Pocket demo ↗</a></div>
+<div class="model highlight"><div class="num">BROWSER / LIVE MIC TEST</div><h3>Live DSP + RVC lab</h3><p>Mic-to-processed-audio streaming now; test an actual RVC ONNX model on a recording in the same local page.</p><small>Live DSP · recorded AI-RVC inference</small><a href="./live-vc/">Open live voice studio ↗</a></div>
 </div>
 </section>
-<section class="banner"><div><div class="kicker">COMPARE BEFORE DOWNLOADING</div><h2>Test the models online first.</h2><p>Record your own voice in your browser, save a WAV, and take it to verified hosted model demos. Pocket TTS also includes a fully browser-based local inference test. LLVC currently provides published sample comparisons.</p></div><div style="align-self:center"><a class="button" href="./online-test/">Open online model lab →</a></div></section>
-<div class="flow"><div class="step"><b>01 · Test online</b><p>Open an available hosted model demo or run Pocket ONNX in your browser. Record a short sample and compare the output quality.</p></div><div class="step"><b>02 · Download launcher</b><p>Get the Windows EXE from GitHub Actions, then install only the engines you want. Each model has its own dependency environment.</p></div><div class="step"><b>03 · Start live conversion</b><p>Run the upstream engine, import your voice and route output to speakers or a virtual audio cable.</p></div></div>
+<section class="banner"><div><div class="kicker">LIVE CHROMEBOOK VOICE CHANGER</div><h2>Try your voice live—not TTS.</h2><p>Connect the microphone directly to an AudioWorklet voice processor. No speech transcription. No fake model output. Test your own RVC ONNX checkpoint in the companion clip-conversion lab.</p></div><div style="align-self:center"><a class="button" href="./live-vc/">Open live studio →</a></div></section>
+<div class="flow"><div class="step"><b>01 · Try the microphone</b><p>Hear a continuous transformed voice live through your speakers or headphones, with estimated delay and output meters.</p></div><div class="step"><b>02 · Download launcher</b><p>Get the Windows EXE from GitHub Actions, then install only the engines you want. Each model has its own dependency environment.</p></div><div class="step"><b>03 · Start live conversion</b><p>Run the upstream engine, import your voice and route output to speakers or a virtual audio cable.</p></div></div>
 </main>
 <footer>IRL Voice Changer · Integration by tbenitz · Third-party engines retain their own licenses · Use only voices you have consent to use</footer>
 </body></html>
