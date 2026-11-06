@@ -62,7 +62,11 @@ export class PCMPlayerWorklet extends EventEmitter {
               switch(e.data.type) {
                 case 'audio': this.addAudio(e.data.data); break;
                 case 'reset': this.reset(); break;
-                case 'stream-ended': this.streamEnded = true; break;
+                case 'stream-ended':
+                   this.streamEnded = true;
+                   // Flush a final short chunk even when below startup buffering threshold.
+                   if (!this.isPlaying && this.getBufferedSamples() > 0) this.isPlaying = true;
+                   break;
                 case 'request-capacity': this.sendCapacityUpdate(); break;
               }
             };
@@ -149,6 +153,8 @@ export class PCMPlayerWorklet extends EventEmitter {
                 this.streamEnded = false;
               } else {
                 this.port.postMessage({ type: 'underrun', buffered, needed: numSamples });
+                 // Pause on slow CPUs and resume after accumulating a full buffer.
+                 if (!this.streamEnded) this.isPlaying = false;
                 this.sendCapacityUpdate();
               }
             } else {
