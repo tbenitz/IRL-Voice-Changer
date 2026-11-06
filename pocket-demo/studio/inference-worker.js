@@ -783,6 +783,9 @@ self.onmessage = async (e) => {
                 postMessage({ type: "error", error: "Cannot switch language while generation is running." });
                 return;
             }
+            // Voice encoder embeddings are tied to their source model bundle.
+            customVoiceEmbedding = null;
+            voiceConditioningCache.delete("custom");
             await loadBundle(data.language, { initialLoad: false });
             return;
         }
