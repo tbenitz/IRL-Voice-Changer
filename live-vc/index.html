@@ -49,11 +49,11 @@ h3{font-size:15px;margin:0 0 9px}
 </style>
 </head>
 <body>
-<header><a class="logo" href="../">◉ IRL <span>VOICE CHANGER</span></a><nav><a href="#live">Live microphone</a><a href="#rvc">RVC model test</a><a href="../online-test/">Other model demos</a><a href="../pocket-demo/studio/">Separate Pocket TTS</a></nav></header>
+<header><a class="logo" href="../">◉ IRL <span>VOICE CHANGER</span></a><nav><a href="#live">Live DSP</a><a href="#rvc-live">Live AI RVC (experimental)</a><a href="#rvc">RVC recording test</a><a href="../online-test/">Other model demos</a><a href="../pocket-demo/studio/">Separate Pocket TTS</a></nav></header>
 <main>
   <span class="eyebrow">ChromeOS / local audio processing / no Python</span>
   <h1>Your voice in.<br><em>A different voice out.</em></h1>
-  <p class="lead">Talk into your Chromebook microphone and hear transformed audio while you speak. The live path is a real-time <strong>DSP voice changer</strong> (not AI cloning). Underneath it is a separate <strong>real RVC neural conversion test</strong> for an uploaded source clip and compatible model.</p>
+  <p class="lead">Talk into your Chromebook microphone and hear transformed audio while you speak. The live path is a real-time <strong>DSP voice changer</strong> (not AI cloning). There is also an <strong>experimental neural RVC microphone mode</strong> with persistent local ONNX sessions, plus a separate file-conversion test.</p>
   <span class="flag">◉ No microphone-to-server connection</span>
   <span class="flag">◉ No raw-audio fallback</span>
   <span class="flag">◉ Live processing via AudioWorklet</span>
@@ -89,7 +89,7 @@ h3{font-size:15px;margin:0 0 9px}
       <hr>
       <h3>What this mode can and cannot do</h3>
       <div class="preview"><strong>Live DSP:</strong> changes the sound of your microphone in real time with granular pitch and tone processing. A preset is not a trained person's voice. This is a working first step, not a substitute for neural RVC.</div>
-      <div class="preview"><strong>RVC:</strong> a trained neural model changes voice identity. The lab below runs actual RVC model inference on a recording, but the currently available browser pipeline is not a persistent low-latency live RVC engine.</div>
+      <div class="preview"><strong>RVC:</strong> a trained neural model changes voice identity. The experimental live RVC mode below reuses ONNX sessions and reports microphone-to-output lag, but has not yet been measured on your Chromebook and may not keep up with live speech.</div>
       <p class="hint">For best results, test with headphones and ChromeOS Chrome. A low-powered processor may crackle under heavy multitasking.</p>
     </aside>
   </div>
@@ -124,7 +124,7 @@ h3{font-size:15px;margin:0 0 9px}
 
   <section class="panel" id="rvc">
     <div class="between"><div><span class="eyebrow">02 · ACTUAL AI VOICE CONVERSION</span><h2>RVC model test in your browser</h2></div><span class="status-pill">EXPERIMENTAL · RECORDING</span></div>
-    <p>Real ONNX <strong>ContentVec → RMVPE → RVC generator</strong> inference entirely on your device, using the open-source <a href="https://github.com/moyue23/rvc-web-runtime" target="_blank" rel="noopener">rvc-web-runtime</a> engine. This is <strong>not real-time</strong> yet. The current runtime reloads model sessions per conversion, so using it directly for a continuous live call would add huge lag.</p>
+    <p>Real ONNX <strong>ContentVec → RMVPE → RVC generator</strong> inference entirely on your device, using the open-source <a href="https://github.com/moyue23/rvc-web-runtime" target="_blank" rel="noopener">rvc-web-runtime</a> engine. This is <strong>not real-time</strong> yet. The recording converter reloads sessions per conversion; the experimental live mic mode above instead has a separate persistent-session worker.</p>
     <div class="rvc-grid">
       <label class="file-input"><b>1 · Trained RVC voice checkpoint</b><small>Compatible RVC v2 ONNX; a three-second MP3 is <strong>not</strong> a trained checkpoint.</small><input id="rvc-model" type="file" accept=".onnx"></label>
       <label class="file-input"><b>2 · Speech to convert</b><small>MP3/WAV recording; 3–10 seconds recommended for 8 GB Chromebook</small><input id="rvc-audio" type="file" accept="audio/*"></label>
