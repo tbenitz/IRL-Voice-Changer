@@ -11,7 +11,7 @@ class EngineTests(unittest.TestCase):
                          {"beatrice", "rvc", "seed", "llvc", "meanvc2"})
 
     def test_live_vs_file_modes_explicit(self):
-        self.assertIn("File", engines.ENGINES["llvc"].mode)
+        self.assertIn("file", engines.ENGINES["llvc"].mode.lower())
         for key in ("rvc", "beatrice", "seed", "meanvc2"):
             self.assertIn("Live", engines.ENGINES[key].mode)
 
@@ -51,6 +51,10 @@ class EngineTests(unittest.TestCase):
                     self.assertTrue(cwd.is_dir())
                     if key == "llvc":
                         self.assertIn("-s", cmd)
+                        adapter = engines.source_dir("llvc") / "irlvc_llvc_mic.py"
+                        adapter.touch()
+                        live, _ = engines.launch_args("llvc", {}, llvc_live=True)
+                        self.assertIn(str(adapter), live)
 
 if __name__ == "__main__":
     unittest.main()
