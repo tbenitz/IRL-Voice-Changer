@@ -1,11 +1,39 @@
 # IRL Voice Changer
 
-A Windows desktop control center for **five genuine voice-conversion engines**, plus a separate **Pocket TTS microphone experiment** on GitHub Pages.
+A Windows desktop control center for **five genuine voice-conversion engines**, a web model testing lab, and a separate repaired **Pocket TTS microphone experiment**.
 
 Website: https://tbenitz.github.io/IRL-Voice-Changer/  
+**Try models online:** https://tbenitz.github.io/IRL-Voice-Changer/online-test/  
 Pocket TTS experiment: https://tbenitz.github.io/IRL-Voice-Changer/pocket-demo/  
 Portable Windows EXE: https://github.com/tbenitz/IRL-Voice-Changer/actions/workflows/windows.yml  
 All build runs: https://github.com/tbenitz/IRL-Voice-Changer/actions
+
+## Try before installing — online model lab
+
+Visit the [Online Voice Model Lab](https://tbenitz.github.io/IRL-Voice-Changer/online-test/). Record your voice and save a 16 kHz mono WAV, or use existing audio. The on-site recorder keeps audio in your browser unless you choose to upload it to a hosted inference provider.
+
+| Model | Online preview |
+| --- | --- |
+| **Beatrice v2** | [RVC + Beatrice hosted converter](https://huggingface.co/spaces/Luminia/rvc-beatrice-voice-conversion). Real Beatrice conversion with a compatible voice model; not VCClient live routing. |
+| **RVC** | Same converter, with an RVC checkpoint or available voice. |
+| **Seed-VC** | [Plachta Seed-VC online demo](https://huggingface.co/spaces/Plachta/Seed-VC), source voice + reference voice. It is the Seed-VC family, not the real-time fork GUI. |
+| **MeanVC2** | [MeanVC2 ZeroGPU demo](https://huggingface.co/spaces/hugging-apps/meanvc2-voice-conversion) using source and reference recordings. |
+| **LLVC** | [Official audio comparisons](https://koeai.github.io/llvc-demo/). **Listening-only:** no verified hosted custom-recording inference endpoint currently connected. |
+| **Pocket TTS** | [Real browser Pocket ONNX](https://tbenitz.github.io/IRL-Voice-Changer/pocket-demo/) with same-document microphone speech recognition and text-to-speech generation. |
+
+These hosted demos run on independent third-party servers. Queues, availability, upload privacy, GPU quotas and models are outside this repository's control. The embedded demo can be blank due to browser privacy restrictions; in that case click **Open full demo**. None of these hosted demos gives your browser a systemwide virtual microphone.
+
+### Pocket microphone demo repair
+
+Previously, the example loaded the Pocket Studio inside an iframe, and the new site's default Pages source did not contain the actual inference assets. This could leave it stuck loading or block audio playback.
+
+We now publish the full Pocket ONNX studio JavaScript, tokenizer and inference worker directly in this repository under the pocket-demo/studio folder. The pocket-demo entry redirects to the full studio with direct microphone controls built into the **same document**, avoiding iframe audio permissions.
+
+To test Pocket, wait for the real model to finish loading, select or clone a permitted voice, and generate typed speech first. Then click **Speak a phrase** in the floating microphone panel. Your spoken words are recognized and handed to the real Pocket ONNX synth. If speech recognition is unavailable, type a phrase and click **Generate words** instead.
+
+Pocket generation is local in the browser, but the speech recognition part may use your browser's online transcription service. It does not preserve exact vocal timing or emotion, and model weight downloads can be large on low-memory devices.
+
+The [Pages workflow](.github/workflows/pages.yml) now validates and deploys the committed Pocket files rather than overwriting the fixed copy during deployment.
 
 ## Download and start
 
