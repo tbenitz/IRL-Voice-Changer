@@ -127,9 +127,8 @@ function choose(key) {
   $("source").href=item.source;
   $("placeholder").classList.toggle("hidden",Boolean(item.embed));
   $("embedded").classList.toggle("hidden",!item.embed);
-  if(item.embed && $("embedded").getAttribute("src")!==item.embed){
-     $("embedded").setAttribute("src",item.embed);
-  }
+  if(!item.embed){$("embedded").setAttribute("src","about:blank");}
+  else if($("embedded").getAttribute("src")!==item.embed){$("embedded").setAttribute("src",item.embed);}
 }
 for(const b of buttons){b.addEventListener("click",()=>choose(b.dataset.engine))}
 document.querySelector(".model-selector").addEventListener("keydown",event=>{
@@ -139,7 +138,8 @@ document.querySelector(".model-selector").addEventListener("keydown",event=>{
   const idx=(i+(event.key==="ArrowRight"?1:-1)+buttons.length)%buttons.length;
   buttons[idx].focus();choose(buttons[idx].dataset.engine);
 });
-choose(selected);
+const requested=new URLSearchParams(location.search).get("model");
+choose(MODELS[requested] ? requested : selected);
 
 let media=null, mediaStream=null, chunks=[], startedAt=0, recordedUrl=null, downloadUrl=null, audioContext=null, recorderTimer=null;
 const tell=text=>$("status").textContent=text;
