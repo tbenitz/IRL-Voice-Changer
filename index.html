@@ -24,30 +24,31 @@ footer{border-top:1px solid var(--line);color:var(--sub);font-size:13px;padding:
 </style>
 </head>
 <body>
-<div class="top"><span>◉ IRL / VOICE CHANGER</span><nav><a href="#models">Models</a><a href="./pocket-demo/">Pocket demo</a><a href="https://github.com/tbenitz/IRL-Voice-Changer">GitHub</a></nav></div>
+<div class="top"><span>◉ IRL / VOICE CHANGER</span><nav><a href="./online-test/">Try models online</a><a href="#models">Models</a><a href="./pocket-demo/">Pocket TTS</a><a href="https://github.com/tbenitz/IRL-Voice-Changer">GitHub</a></nav></div>
 <main>
-<div class="kicker">VOICE CONVERSION / LOCAL-FIRST / WINDOWS</div>
-<h1>Five engines.<br>One place to start.</h1>
-<p class="lead">Switch between Beatrice v2, RVC, Seed-VC, LLVC and MeanVC2 without mixing their incompatible Python environments. Launch the actual original model tools for microphone conversion or file inference—never a fake playback demonstration.</p>
+<div class="kicker">TEST ONLINE FIRST / INSTALL IF YOU LIKE IT</div>
+<h1>Hear the voices.<br>Then decide.</h1>
+<p class="lead">Try Beatrice v2, RVC, Seed-VC and MeanVC2 through hosted browser demos before installing. Compare LLVC using its official audio samples, and run real Pocket TTS ONNX in your browser. If you like a model, use the Windows hub to launch its actual live inference engine.</p>
 <div class="buttons">
-<a class="button" href="https://github.com/tbenitz/IRL-Voice-Changer/actions/workflows/windows.yml">↓ Download Windows build</a>
+<a class="button" href="./online-test/">🎙 Test voice models online</a>
+<a class="button secondary" href="https://github.com/tbenitz/IRL-Voice-Changer/actions/workflows/windows.yml">↓ Download Windows build</a>
 <a class="button secondary" href="./pocket-demo/">🎙 Try Pocket TTS microphone demo</a>
 <a class="button secondary" href="https://github.com/tbenitz/IRL-Voice-Changer#readme">Setup guide ↗</a>
 </div>
-<p class="note">GitHub Actions builds a portable launcher EXE; engine models and dependencies download separately during setup. Windows audio devices and GPU support must be configured per model. The launcher is not itself five bundled weight files.</p>
+<p class="note">Online AI conversions run through public third-party hosted services and may have queues or require a compatible voice model. LLVC currently has listening samples only. Pocket TTS inference runs inside your browser; microphone speech recognition may use a browser service. The desktop launcher installs model dependencies separately.</p>
 <section id="models" style="margin-top:70px">
 <div class="section-head"><div><div class="kicker">ENGINES</div><h2>Choose the right conversion method.</h2></div><p>Each card represents an upstream project executable or inference script. Model weights and voice references are not bundled.</p></div>
 <div class="grid">
-<div class="model highlight"><div class="num">01 / LOW LATENCY</div><h3>Beatrice v2</h3><p>Low-latency live conversion through the official VCClient desktop build.</p><small>Live microphone · official Windows download</small><a href="https://github.com/w-okada/voice-changer">Official model ↗</a></div>
-<div class="model"><div class="num">02 / TRAINED VOICES</div><h3>RVC</h3><p>Real-time trained-voice conversion with model weights selected in upstream GUI.</p><small>Live microphone · .pth/.index models</small><a href="https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI">Official project ↗</a></div>
-<div class="model"><div class="num">03 / ZERO-SHOT</div><h3>Seed-VC Realtime</h3><p>Microphone conversion conditioned on a target reference recording.</p><small>Live microphone · GPU recommended</small><a href="https://github.com/jiaheguo521/seed-vc-realtime">Official project ↗</a></div>
-<div class="model"><div class="num">04 / STREAMING RESEARCH</div><h3>LLVC</h3><p>Run genuine persistent-buffer microphone conversion with our experimental adapter, or use upstream file inference.</p><small>Live mic adapter · optional file mode · CPU dependent</small><a href="https://github.com/KoeAI/LLVC">Official project ↗</a></div>
-<div class="model"><div class="num">05 / EXPERIMENTAL LIVE</div><h3>MeanVC2</h3><p>Research microphone mode with reference speaker and 40 ms or 120 ms configurations.</p><small>Live microphone · device/weight setup required</small><a href="https://github.com/ASLP-lab/MeanVC2">Official project ↗</a></div>
-<div class="model highlight"><div class="num">EXTRA / POCKET LAB</div><h3>Pocket TTS</h3><p>A genuine ONNX text-to-speech engine driven by recognized microphone words, not direct voice conversion.</p><small>Browser demo · phrase-by-phrase resynthesis</small><a href="./pocket-demo/">Open working demo ↗</a></div>
+<div class="model highlight"><div class="num">01 / LOW LATENCY</div><h3>Beatrice v2</h3><p>Low-latency live conversion through VCClient. Hear hosted file conversion first.</p><small>Desktop real-time · online file demo</small><a href="./online-test/?model=beatrice">Try online ↗</a></div>
+<div class="model"><div class="num">02 / TRAINED VOICES</div><h3>RVC</h3><p>Real-time trained voice conversion using your compatible target checkpoint.</p><small>Desktop real-time · online file demo</small><a href="./online-test/?model=rvc">Try online ↗</a></div>
+<div class="model"><div class="num">03 / ZERO-SHOT</div><h3>Seed-VC Realtime</h3><p>Use a short target recording to convert speech without training.</p><small>Desktop realtime · online zero-shot demo</small><a href="./online-test/?model=seed">Try online ↗</a></div>
+<div class="model"><div class="num">04 / STREAMING RESEARCH</div><h3>LLVC</h3><p>Experimental local microphone converter, with official published before/after audio comparisons.</p><small>Online listening demo only · local live mic</small><a href="./online-test/?model=llvc">Hear official samples ↗</a></div>
+<div class="model"><div class="num">05 / EXPERIMENTAL LIVE</div><h3>MeanVC2</h3><p>Try a source and reference voice in the hosted ZeroGPU demo.</p><small>Desktop live mic · online zero-shot demo</small><a href="./online-test/?model=mean">Try online ↗</a></div>
+<div class="model highlight"><div class="num">EXTRA / POCKET LAB</div><h3>Pocket TTS</h3><p>Genuine browser ONNX speech generation, now with same-document microphone controls.</p><small>Browser inference · phrase-by-phrase</small><a href="./pocket-demo/">Try fixed Pocket demo ↗</a></div>
 </div>
 </section>
-<section class="banner"><div><div class="kicker">SEPARATE BROWSER DEMONSTRATION</div><h2>Does Pocket TTS work as a voice changer?</h2><p>In a turn-based sense: recognize what you said, feed those words into Pocket, and speak the output with a chosen voice. It cannot preserve exact timing like a speech-to-speech VC model.</p></div><div style="align-self:center"><a class="button" href="./pocket-demo/">Open Pocket demonstration →</a></div></section>
-<div class="flow"><div class="step"><b>01 · Download launcher</b><p>Get the Windows EXE from GitHub Actions. Run locally; no GUI installer or cloud speech service is required for the hub.</p></div><div class="step"><b>02 · Install an engine</b><p>The hub provisions isolated Python runtimes and official upstream code for supported models. Large weight downloads are separate.</p></div><div class="step"><b>03 · Start and route audio</b><p>Select the engine, import voices as required, and choose an input/output or Windows virtual cable inside the original engine application.</p></div></div>
+<section class="banner"><div><div class="kicker">COMPARE BEFORE DOWNLOADING</div><h2>Test the models online first.</h2><p>Record your own voice in your browser, save a WAV, and take it to verified hosted model demos. Pocket TTS also includes a fully browser-based local inference test. LLVC currently provides published sample comparisons.</p></div><div style="align-self:center"><a class="button" href="./online-test/">Open online model lab →</a></div></section>
+<div class="flow"><div class="step"><b>01 · Test online</b><p>Open an available hosted model demo or run Pocket ONNX in your browser. Record a short sample and compare the output quality.</p></div><div class="step"><b>02 · Download launcher</b><p>Get the Windows EXE from GitHub Actions, then install only the engines you want. Each model has its own dependency environment.</p></div><div class="step"><b>03 · Start live conversion</b><p>Run the upstream engine, import your voice and route output to speakers or a virtual audio cable.</p></div></div>
 </main>
 <footer>IRL Voice Changer · Integration by tbenitz · Third-party engines retain their own licenses · Use only voices you have consent to use</footer>
 </body></html>
