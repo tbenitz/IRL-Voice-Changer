@@ -94,6 +94,34 @@ h3{font-size:15px;margin:0 0 9px}
     </aside>
   </div>
 
+  <section class="panel" id="rvc-live">
+    <div class="between"><div><span class="eyebrow">02 · LIVE NEURAL VOICE CONVERSION — EXPERIMENTAL</span><h2>Stream your microphone through real RVC</h2></div><span class="status-pill" id="rvc-live-badge">OFF · MUTED</span></div>
+    <p>This mode feeds microphone blocks to a <strong>persistent, on-device RVC v2 ONNX worker</strong>. It uses real ContentVec features, RMVPE pitch tracking, and a trained RVC generator. Unlike Pocket TTS or the DSP presets above, the voice identity comes from your actual RVC model. Processing delay may be severe on 8 GB ChromeOS and has not been hardware-verified.</p>
+    <div class="rvc-info"><strong>Prepare models below first:</strong> add a compatible trained RVC v2 .onnx voice checkpoint, then upload or download the ContentVec and RMVPE ONNX base models in the <a href="#rvc">model files section</a>. These are reused for all microphone chunks. A 3-second recording alone is not a trained RVC model.</div>
+    <div class="actions">
+      <label style="font-size:12px">Microphone block
+        <select id="rvc-live-chunk" style="display:block;background:#162e43;color:var(--txt);border:1px solid #3a5a6d;border-radius:9px;padding:10px">
+          <option value="1000">1.0 s — more responsive</option><option value="1500" selected>1.5 s — balanced</option><option value="2500">2.5 s — more stable</option>
+        </select>
+      </label>
+      <label style="font-size:12px">Checkpoint output rate
+        <select id="rvc-live-rate" style="display:block;background:#162e43;color:var(--txt);border:1px solid #3a5a6d;border-radius:9px;padding:10px">
+          <option value="48000">48 kHz</option><option value="40000">40 kHz</option><option value="32000">32 kHz</option>
+        </select>
+      </label>
+      <button class="primary" id="rvc-live-start" type="button">Load AI model &amp; start microphone</button>
+      <button class="secondary" id="rvc-live-stop" type="button" disabled>Stop / mute</button>
+    </div>
+    <div class="stats">
+      <div class="stat"><strong id="rvc-live-lag">—</strong><span>Estimated mic-to-AI-output delay (ms)</span></div>
+      <div class="stat"><strong id="rvc-live-processing">—</strong><span>Last neural inference time (ms)</span></div>
+      <div class="stat"><strong id="rvc-live-drops">0</strong><span>Input blocks dropped to prevent unlimited lag</span></div>
+      <div class="stat"><strong id="rvc-live-state">Not started</strong><span>Worker state</span></div>
+    </div>
+    <div id="rvc-live-status" role="status" aria-live="polite">Waiting for a trained ONNX voice model and base models. No microphone audio is being sent anywhere.</div>
+    <div class="notice">This is genuine neural VC code, not an iframe or a pitch-shift demo. The AudioWorklet always outputs silence and only the RVC worker's successful model PCM reaches speakers. On errors, underspeed or missing output, it mutes or drops audio, <strong>never</strong> switches to the original mic. It may be too slow to be useful for live conversation on an 8 GB Chromebook; judge by the measured lag.</div>
+  </section>
+
   <section class="panel" id="rvc">
     <div class="between"><div><span class="eyebrow">02 · ACTUAL AI VOICE CONVERSION</span><h2>RVC model test in your browser</h2></div><span class="status-pill">EXPERIMENTAL · RECORDING</span></div>
     <p>Real ONNX <strong>ContentVec → RMVPE → RVC generator</strong> inference entirely on your device, using the open-source <a href="https://github.com/moyue23/rvc-web-runtime" target="_blank" rel="noopener">rvc-web-runtime</a> engine. This is <strong>not real-time</strong> yet. The current runtime reloads model sessions per conversion, so using it directly for a continuous live call would add huge lag.</p>
@@ -233,6 +261,13 @@ labels();
 
 // Experimental actual RVC file-mode inference. NEVER pass off the DSP output as RVC.
 const RUNTIME={vec:null,pitch:null,busy:false};
+window.__IRL_RVC_getModels = () => ({
+ voice: $("rvc-model").files?.[0] || null,
+ contentVec: $("rvc-vec").files?.[0] || RUNTIME.vec,
+ rmvpe: $("rvc-pitch").files?.[0] || RUNTIME.pitch,
+ busy: RUNTIME.busy,
+});
+
 const CV_URL="https://huggingface.co/TigreGotico/voiceclonnx-rvc/resolve/main/contentvec_768l12_q8.onnx";
 const F0_URL="https://huggingface.co/TigreGotico/voiceclonnx-rvc/resolve/main/rmvpe_q8.onnx";
 function note(message,bad=false){$("rvc-status").textContent=message;$("rvc-status").style.color=bad?"#ffb2ba":"#c3dee9";}
@@ -316,4 +351,5 @@ $("rvc-run").addEventListener("click",async()=>{
 });
 })();
 </script>
+<script defer src="./rvc-live-ui.js?v=20261106-v1"></script>
 </body></html>
