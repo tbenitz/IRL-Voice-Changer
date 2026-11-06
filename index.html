@@ -28,16 +28,17 @@ footer{border-top:1px solid var(--line);color:var(--sub);font-size:13px;padding:
 <main>
 <div class="kicker">LIVE VOICE TRANSFORMATION · CHROMEBOOK READY</div>
 <h1>Talk in.<br>Hear a changed voice.</h1>
-<p class="lead">Start with a live browser microphone voice changer using on-device DSP pitch and tone transformation. Then test actual neural RVC conversion with an ONNX checkpoint in the experimental RVC recording lab. Other engine demos are hosted, while the Windows desktop app runs their native live versions.</p>
+<p class="lead">Start with a live on-device DSP microphone voice changer, then try the experimental microphone-to-RVC ONNX worker using a trained voice checkpoint. The separate RVC recording lab is available for file conversion before attempting live inference. Other engine demos are hosted, while the Windows desktop app runs their native live versions.</p>
 <div class="buttons">
 <a class="button" href="./live-vc/">🎙 Start live mic voice changer</a>
-<a class="button secondary" href="./live-vc/#rvc">Test a real RVC model ↗</a>
+<a class="button secondary" href="./live-vc/#rvc-live">Experimental live neural RVC ↗</a>
+<a class="button secondary" href="./live-vc/#rvc">Convert with RVC ONNX ↗</a>
 <a class="button secondary" href="./online-test/">Compare other VC models</a>
 <a class="button secondary" href="https://github.com/tbenitz/IRL-Voice-Changer/actions/workflows/windows.yml">↓ Download Windows build</a>
 <a class="button secondary" href="./pocket-demo/">Separate Pocket TTS experiment</a>
 <a class="button secondary" href="https://github.com/tbenitz/IRL-Voice-Changer#readme">Setup guide ↗</a>
 </div>
-<p class="note"><strong>Important distinction:</strong> The browser live microphone changer is real-time DSP, not RVC voice identity cloning. The ONNX RVC model lab converts uploaded recordings, not a live microphone stream. These features are separate, labeled honestly, and neither sends microphone audio to an inference server. The Windows launcher supports native real-time neural engines.</p>
+<p class="note"><strong>Important distinction:</strong> The browser live microphone changer is real-time DSP, not RVC voice identity cloning. The experimental neural RVC worker processes microphone chunks with persistent model sessions, but low-latency performance on 8 GB ChromeOS is not yet verified. The separate RVC recording lab converts uploaded clips. These features are separate, labeled honestly, and neither sends microphone audio to an inference server. The Windows launcher supports native real-time neural engines.</p>
 <section id="models" style="margin-top:70px">
 <div class="section-head"><div><div class="kicker">ENGINES</div><h2>Choose the right conversion method.</h2></div><p>Each card represents an upstream project executable or inference script. Model weights and voice references are not bundled.</p></div>
 <div class="grid">
