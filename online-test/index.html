@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#080f1b">
+<title>Online Voice Model Lab · IRL Voice Changer</title>
+<style>
+:root{color-scheme:dark;--bg:#080e18;--panel:#101d2c;--card:#182a3a;--muted:#a9bac9;--text:#eef7ff;--aqua:#53dcd3;--line:#2b4154;--warn:#edc87e}
+*{box-sizing:border-box}body{margin:0;color:var(--text);background:radial-gradient(circle at 60% 0,#143a4b,transparent 38%),var(--bg);font:15px/1.55 system-ui,Segoe UI,Arial,sans-serif}
+a{color:var(--aqua);text-decoration:none}a:hover{text-decoration:underline}
+header{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:19px max(3vw,20px);border-bottom:1px solid var(--line)}header b{letter-spacing:.12em;font-size:13px}header nav{display:flex;gap:16px;flex-wrap:wrap}
+main{max-width:1510px;margin:auto;padding:34px 22px 65px}.kicker{color:var(--aqua);font-size:12px;letter-spacing:.18em;font-weight:800}h1{margin:9px 0 12px;font-size:clamp(32px,4.7vw,62px);letter-spacing:-.045em;line-height:1.1}h2{font-size:21px;margin:0 0 10px}h3{font-size:17px;margin:8px 0 5px}p{color:var(--muted);margin:8px 0 17px;line-height:1.65}.lead{max-width:900px;font-size:17px}.intro-note{color:var(--warn);font-size:13px}
+.model-selector{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin:25px 0}
+.engine{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 13px;text-align:left;color:var(--text);font:inherit;cursor:pointer;min-height:94px;transition:background .15s,border .15s}
+.engine strong{font-size:16px;display:block;margin-bottom:6px}.engine small{font-size:11px;line-height:1.3;color:var(--muted);display:block}.engine[aria-selected=true]{border-color:var(--aqua);background:#143338;box-shadow:inset 0 0 0 1px #235e64}.engine:focus-visible,a:focus-visible,button:focus-visible{outline:2px solid var(--aqua);outline-offset:3px}
+.layout{display:grid;grid-template-columns:minmax(290px,335px) minmax(0,1fr);gap:17px;align-items:start}.card{border:1px solid var(--line);background:var(--panel);border-radius:15px;padding:21px}.tester{padding:0;overflow:hidden}
+.btn{border:0;border-radius:10px;background:var(--card);color:var(--text);font:inherit;font-weight:750;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:11px 15px;text-decoration:none}.btn:hover{text-decoration:none;background:#294459}.btn.primary{background:var(--aqua);color:#09131d}.btn.primary:hover{background:#75e9dc}.btn:disabled{opacity:.46;cursor:default}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}.notice{font-size:13px;color:var(--warn);border:1px solid #625237;border-radius:11px;background:#262317;padding:12px;margin:12px 0}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}#status{font-size:13px;color:var(--muted);min-height:40px;margin-top:5px;white-space:pre-wrap;word-break:break-word}
+audio{width:100%;margin:12px 0}label{font-weight:650;font-size:13px;display:block;margin-top:12px}#record-detail{font-size:13px;color:var(--muted)}
+.info{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px;margin:14px 0}.info p{font-size:13px;margin:4px 0}.info b{font-size:14px}
+.specific{padding:18px 22px 12px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:14px;align-items:start}.specific p{font-size:13px;margin:4px 0}.model-note{color:var(--warn);font-size:12px}
+#embedded{width:100%;min-height:950px;border:0;display:block;background:#0d1826}.placeholder{padding:32px 23px;color:var(--muted)}
+.panel-foot{border-top:1px solid var(--line);padding:12px 21px;display:flex;gap:13px;align-items:center;justify-content:space-between;font-size:12px;color:var(--muted)}
+.faq{margin-top:25px;max-width:940px}.faq p{margin:8px 0}.faq strong{color:var(--text)}.hidden{display:none!important}
+@media(max-width:1200px){.model-selector{grid-template-columns:repeat(3,1fr)}}@media(max-width:930px){.layout{grid-template-columns:1fr}.engine{min-height:82px}#embedded{min-height:820px}}@media(max-width:540px){main{padding:22px 13px}.model-selector{grid-template-columns:repeat(2,1fr);gap:7px}.card{padding:15px}.specific{padding:16px}.panel-foot{align-items:flex-start;flex-direction:column}header{align-items:flex-start;flex-direction:column}h1{font-size:34px}}
+</style>
+</head>
+<body>
+<header><b>◉ IRL / ONLINE MODEL LAB</b><nav><a href="../">Home</a><a href="../pocket-demo/">Pocket TTS</a><a href="https://github.com/tbenitz/IRL-Voice-Changer">GitHub</a></nav></header>
+<main>
+  <div class="kicker">TEST FIRST · INSTALL LATER</div>
+  <h1>Hear the difference before installing.</h1>
+  <p class="lead">Compare voice conversion models with genuine third-party hosted inference demos. You can record a short voice sample here and download the WAV to use in each provider's test. The models themselves run on the external demo's servers—not on GitHub Pages.</p>
+  <p class="intro-note">Online conversions are generally record/upload → process → listen, not instant Discord-style live microphone routing. Public demo availability, limits, and privacy policies are controlled by their operators.</p>
+  <div class="model-selector" role="tablist" aria-label="Select a model to test">
+    <button class="engine" role="tab" data-engine="beatrice" aria-selected="true"><strong>Beatrice v2</strong><small>Hosted model converter</small></button>
+    <button class="engine" role="tab" data-engine="rvc" aria-selected="false"><strong>RVC</strong><small>Hosted voice conversion</small></button>
+    <button class="engine" role="tab" data-engine="seed" aria-selected="false"><strong>Seed-VC</strong><small>Online zero-shot test</small></button>
+    <button class="engine" role="tab" data-engine="mean" aria-selected="false"><strong>MeanVC2</strong><small>Free-hosted demo</small></button>
+    <button class="engine" role="tab" data-engine="llvc" aria-selected="false"><strong>LLVC</strong><small>Official listening samples</small></button>
+    <button class="engine" role="tab" data-engine="pocket" aria-selected="false"><strong>Pocket TTS</strong><small>Real browser ONNX engine</small></button>
+  </div>
+  <div class="layout">
+    <section class="card" aria-labelledby="recorder-heading">
+      <div class="kicker">YOUR OWN VOICE</div>
+      <h2 id="recorder-heading">Record a test clip</h2>
+      <p>Record 5–15 seconds of clear speech and save it as a WAV. Then upload it inside the selected hosted demo. Your recording stays in this browser until you choose to upload it elsewhere.</p>
+      <div class="actions">
+        <button id="record" class="btn primary">● Record</button>
+        <button id="finish" class="btn" disabled>■ Stop</button>
+      </div>
+      <div id="status" role="status" aria-live="polite">Ready to record. Microphone permission is requested only when you press Record.</div>
+      <audio id="audio" controls class="hidden"></audio>
+      <div class="actions">
+        <a id="download" class="btn hidden" download="voice-test.wav">↓ Save WAV</a>
+        <button id="remove" class="btn hidden">Clear</button>
+      </div>
+      <div id="record-detail">Browser recording supports Chrome, Edge, and other browsers with MediaRecorder and Web Audio.</div>
+      <div class="info">
+        <b id="feature-title">Beatrice v2: test a converted voice</b>
+        <p id="feature-copy">The hosted Beatrice demo accepts a source recording and a compatible voice model file. The model upload is optional only if the hosted service provides a built-in voice.</p>
+      </div>
+      <div class="notice" id="privacy">When you open a hosted demo and upload your recording, that audio is processed according to the hosting provider's privacy policy. Do not submit confidential calls or someone else's voice without permission.</div>
+      <p style="font-size:13px">Want live, low-latency microphone conversion afterwards? <a href="https://github.com/tbenitz/IRL-Voice-Changer/actions/workflows/windows.yml">Download the Windows app</a> and install the model you prefer.</p>
+    </section>
+    <section class="card tester" role="tabpanel" aria-label="Selected model's online demo">
+      <div class="specific">
+        <div>
+          <div class="kicker">PROVIDER MODEL DEMO</div>
+          <h2 id="demo-title">Beatrice v2 · online conversion</h2>
+          <p id="demo-desc">Choose Beatrice v2 in the hosted Gradio interface, upload voice/model files and run actual inference.</p>
+          <div class="model-note" id="demo-note">This is not a live 10ms browser microphone stream.</div>
+        </div>
+        <a class="btn primary" href="https://huggingface.co/spaces/Luminia/rvc-beatrice-voice-conversion" id="open" target="_blank" rel="noopener noreferrer">Open full demo ↗</a>
+      </div>
+      <div id="placeholder" class="placeholder hidden">A hosted demo is not available for this model. The link opens the model authors' published sample comparisons instead. This does not process your microphone recording.</div>
+      <iframe id="embedded" title="Beatrice online voice conversion hosted demo" loading="lazy" referrerpolicy="no-referrer" allow="microphone; clipboard-read; clipboard-write" src="https://luminia-rvc-beatrice-voice-conversion.hf.space"></iframe>
+      <div class="panel-foot"><span>External demo embedded with permission provided by its host · if blank, click Open full demo</span><a id="source" href="https://github.com/w-okada/voice-changer" target="_blank" rel="noopener noreferrer">Model source ↗</a></div>
+    </section>
+  </div>
+  <div class="faq">
+    <h2 style="margin-top:30px">Why some tests are different</h2>
+    <p><strong>Beatrice and RVC:</strong> the linked hosted conversion demo supports both formats, but Beatrice may require an actual Beatrice voice model, and RVC may need an RVC model. The online test is not the VCClient desktop program.</p>
+    <p><strong>Seed-VC and MeanVC2:</strong> these hosted demos support source and target/reference audio. Their free queues can have waiting time or go temporarily offline.</p>
+    <p><strong>LLVC:</strong> the research project has official before/after audio comparisons, but I could not verify a publicly hosted LLVC inference service that accepts new recordings. Its tab is explicitly listening-only until a proper hosted backend exists.</p>
+    <p><strong>Pocket TTS:</strong> unlike the other online demos, Pocket runs genuine ONNX inference in your browser. You must choose a voice, then type or dictate text. It generates new speech; it does not preserve exact phrasing and timing like the other VC engines.</p>
+  </div>
+</main>
+<script>
+(() => {
+"use strict";
+const MODELS = {
+  beatrice: { title:"Beatrice v2 · online conversion", url:"https://huggingface.co/spaces/Luminia/rvc-beatrice-voice-conversion", embed:"https://luminia-rvc-beatrice-voice-conversion.hf.space", source:"https://github.com/w-okada/voice-changer",
+    desc:"Inside the hosted interface choose Beatrice v2, add your Beatrice-compatible model, then upload speech and convert.", note:"A voice model may be needed. Unlike native VCClient, online processing is file-based.",
+    title2:"Beatrice: compatible model required", copy:"The hosted Beatrice converter uses actual Beatrice model inference. Its interface may require you to supply a valid .pt.gz file before a custom conversion." },
+  rvc: { title:"RVC · online conversion", url:"https://huggingface.co/spaces/Luminia/rvc-beatrice-voice-conversion", embed:"https://luminia-rvc-beatrice-voice-conversion.hf.space", source:"https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI",
+    desc:"Choose RVC v2 in the hosted converter. Upload your voice or use a compatible available model and compare actual converted audio.", note:"This is the RVC model family, not real-time Windows routing.",
+    title2:"RVC: test a trained voice", copy:"The demo supports RVC voice checkpoints. Recording a short source clip is enough to test speech, but your desired target voice normally needs a trained checkpoint." },
+  seed: { title:"Seed-VC · zero-shot voice conversion", url:"https://huggingface.co/spaces/Plachta/Seed-VC", embed:"https://plachta-seed-vc.hf.space", source:"https://github.com/jiaheguo521/seed-vc-realtime",
+    desc:"Provide your source speech and a 1–30 second target-speaker reference, then convert in the original Seed-VC hosted demo.", note:"This runs the Seed-VC model family, not exactly the fork's live microphone program.",
+    title2:"Seed-VC: reference voice", copy:"You don't need to train a new RVC-style model. Upload a target-speaker reference and the speech to convert in the online demo." },
+  mean: { title:"MeanVC2 · zero-shot voice conversion", url:"https://huggingface.co/spaces/hugging-apps/meanvc2-voice-conversion", embed:"https://hugging-apps-meanvc2-voice-conversion.hf.space", source:"https://github.com/ASLP-lab/MeanVC2",
+    desc:"Try genuine MeanVC2 inference with your source and target reference samples using the Hugging Face ZeroGPU demo.", note:"Online file conversion tests output quality, not your computer's live latency.",
+    title2:"MeanVC2: test source + target", copy:"Upload a source recording and a separate target voice reference. The hosted app runs the model for an A/B comparison." },
+  llvc: { title:"LLVC · published audio comparisons", url:"https://koeai.github.io/llvc-demo/", embed:"", source:"https://github.com/KoeAI/LLVC",
+    desc:"Hear the author's sample conversion comparisons. No independently verified public LLVC microphone/upload inference service is available.", note:"Audio samples only · cannot process your new test recording online here.",
+    title2:"LLVC: no public interactive endpoint", copy:"LLVC publishes comparative audio demos. To convert your own voice, use the experimental local microphone adapter in the Windows application." },
+  pocket: { title:"Pocket TTS · real in-browser voice synthesis", url:"../pocket-demo/studio/index.html", embed:"../pocket-demo/studio/index.html", source:"https://github.com/tbenitz/A-Portable-Voice-Clone-Exe",
+    desc:"Select or upload a target voice in the complete Pocket Studio. Type text to generate genuine cloned voice audio on your device.", note:"Full browser ONNX engine · first model download is large · generation may be slow on CPU.",
+    title2:"Pocket: speech generation not live VC", copy:"For the clearest test, open the full Pocket Studio and generate typed speech first. The separate microphone experiment is available under Pocket TTS in the top navigation." }
+};
+const $=id=>document.getElementById(id);
+const buttons=[...document.querySelectorAll("[data-engine]")];
+let selected="beatrice";
+function choose(key) {
+  const item=MODELS[key];
+  if(!item)return;
+  selected=key;
+  for(const b of buttons){b.setAttribute("aria-selected",String(b.dataset.engine===key));b.tabIndex=b.dataset.engine===key?0:-1}
+  $("demo-title").textContent=item.title;
+  $("demo-desc").textContent=item.desc;
+  $("demo-note").textContent=item.note;
+  $("feature-title").textContent=item.title2;
+  $("feature-copy").textContent=item.copy;
+  $("open").href=item.url;
+  $("open").textContent=key==="llvc"?"Listen to samples ↗":key==="pocket"?"Open full Pocket Studio ↗":"Open full demo ↗";
+  $("source").href=item.source;
+  $("placeholder").classList.toggle("hidden",Boolean(item.embed));
+  $("embedded").classList.toggle("hidden",!item.embed);
+  if(item.embed && $("embedded").getAttribute("src")!==item.embed){
+     $("embedded").setAttribute("src",item.embed);
+  }
+}
+for(const b of buttons){b.addEventListener("click",()=>choose(b.dataset.engine))}
+document.querySelector(".model-selector").addEventListener("keydown",event=>{
+  if(!["ArrowLeft","ArrowRight"].includes(event.key))return;
+  event.preventDefault();
+  const i=buttons.findIndex(x=>x.dataset.engine===selected);
+  const idx=(i+(event.key==="ArrowRight"?1:-1)+buttons.length)%buttons.length;
+  buttons[idx].focus();choose(buttons[idx].dataset.engine);
+});
+choose(selected);
+
+let media=null, mediaStream=null, chunks=[], startedAt=0, recordedUrl=null, downloadUrl=null, audioContext=null, recorderTimer=null;
+const tell=text=>$("status").textContent=text;
+const stopTracks=()=>{if(mediaStream){mediaStream.getTracks().forEach(t=>t.stop());mediaStream=null}};
+const clearAudio=()=>{if(recordedUrl)URL.revokeObjectURL(recordedUrl);if(downloadUrl)URL.revokeObjectURL(downloadUrl);recordedUrl=downloadUrl=null;$("audio").pause();$("audio").removeAttribute("src");$("audio").classList.add("hidden");$("download").removeAttribute("href");$("download").classList.add("hidden");$("remove").classList.add("hidden")};
+const encodeWav=(samples,rate)=>{
+ const buffer=new ArrayBuffer(44+samples.length*2),view=new DataView(buffer);
+ const write=(at,s)=>{for(let i=0;i<s.length;i++)view.setUint8(at+i,s.charCodeAt(i));};
+ write(0,"RIFF");view.setUint32(4,36+samples.length*2,true);write(8,"WAVE");write(12,"fmt ");
+ view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);
+ view.setUint32(24,rate,true);view.setUint32(28,rate*2,true);view.setUint16(32,2,true);
+ view.setUint16(34,16,true);write(36,"data");view.setUint32(40,samples.length*2,true);
+ let p=44;
+ for(let i=0;i<samples.length;i++){const x=Math.max(-1,Math.min(1,samples[i]));view.setInt16(p,x<0?x*0x8000:x*0x7fff,true);p+=2}
+ return new Blob([buffer],{type:"audio/wav"});
+};
+const exportAudio=async(blob)=>{
+ audioContext=new(window.AudioContext||window.webkitAudioContext)();
+ try{
+   const pcm=await audioContext.decodeAudioData(await blob.arrayBuffer());
+   const targetRate=16000;
+   const offline=new OfflineAudioContext(1,Math.ceil(pcm.duration*targetRate),targetRate);
+   const source=offline.createBufferSource();source.buffer=pcm;source.connect(offline.destination);source.start();
+   const rendered=await offline.startRendering();
+   const wav=encodeWav(rendered.getChannelData(0),targetRate);
+   downloadUrl=URL.createObjectURL(wav);
+   $("download").href=downloadUrl;$("download").classList.remove("hidden");
+   tell("Recording ready · "+pcm.duration.toFixed(1)+" s · WAV (16 kHz mono). Click Save WAV, then upload it into the provider demo.");
+ } finally{await audioContext.close();audioContext=null}
+};
+$("record").addEventListener("click",async()=>{
+ if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){tell("Your browser does not support microphone recording. Try recent Chrome/Edge or upload audio directly in the hosted demo.");return}
+ try{
+   clearAudio();
+   mediaStream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true}});
+   const types=["audio/webm;codecs=opus","audio/webm","audio/mp4"];
+   const mime=types.find(t=>MediaRecorder.isTypeSupported(t));
+   media=new MediaRecorder(mediaStream,mime?{mimeType:mime}:undefined);chunks=[];startedAt=Date.now();
+   media.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
+   media.onerror=e=>{tell("Recording error: "+(e.error?.message||"unknown"));stopTracks();$("record").disabled=false;$("finish").disabled=true};
+   media.onstop=async()=>{
+     stopTracks();clearTimeout(recorderTimer);
+     $("record").disabled=false;$("finish").disabled=true;
+     const blob=new Blob(chunks,{type:media.mimeType||"audio/webm"});
+     if(!blob.size){tell("The microphone returned an empty recording. Check permission and device input.");return}
+     recordedUrl=URL.createObjectURL(blob);
+     $("audio").src=recordedUrl;$("audio").classList.remove("hidden");$("remove").classList.remove("hidden");
+     tell("Converting your recording to a compatible WAV…");
+     try{await exportAudio(blob)}catch(e){tell("Recording captured, but WAV export failed ("+e.message+"). You can still record directly in the provider's demo.")}
+   };
+   media.start(300);
+   $("record").disabled=true;$("finish").disabled=false;
+   tell("Recording… speak naturally for 5–15 seconds. Stops automatically at 30 seconds.");
+   recorderTimer=setTimeout(()=>{if(media?.state==="recording")media.stop()},30000);
+ }catch(e){stopTracks();tell("Microphone could not start: "+(e.message||e));$("record").disabled=false;$("finish").disabled=true}
+});
+$("finish").addEventListener("click",()=>{if(media?.state==="recording")media.stop()});
+$("remove").addEventListener("click",()=>{clearAudio();tell("Recording removed from this page.")});
+window.addEventListener("beforeunload",()=>{if(media?.state==="recording")media.stop();stopTracks();clearAudio()});
+})();
+</script>
+</body>
+</html>
