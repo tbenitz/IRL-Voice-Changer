@@ -1,0 +1,45 @@
+name: Deploy website and Pocket TTS demo
+on:
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "pocket-demo/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: github-pages
+      url: https://tbenitz.github.io/IRL-Voice-Changer/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - name: Assemble genuine Pocket ONNX studio with microphone adapter
+        run: |
+          set -euo pipefail
+          mkdir -p _site/pocket-demo/studio
+          cp index.html _site/index.html
+          cp pocket-demo/index.html _site/pocket-demo/index.html
+          touch _site/.nojekyll
+          git clone --quiet https://github.com/tbenitz/A-Portable-Voice-Clone-Exe.git /tmp/pocket-source
+          git -C /tmp/pocket-source checkout 5cbe6628fc11bc89603c1d805658580df0f0cdd1
+          cp -a /tmp/pocket-source/web/. _site/pocket-demo/studio/
+          test -f _site/pocket-demo/studio/inference-worker.js
+          test -f _site/pocket-demo/studio/app.js
+          test -f _site/pocket-demo/studio/PCMPlayerWorklet.js
+          test -f _site/pocket-demo/studio/studio-ui.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - uses: actions/deploy-pages@v4
+        id: deployment
