@@ -26,16 +26,16 @@ audio{width:100%;margin:12px 0}label{font-weight:650;font-size:13px;display:bloc
 </style>
 </head>
 <body>
-<header><b>◉ IRL / ONLINE MODEL LAB</b><nav><a href="../">Home</a><a href="../pocket-demo/">Pocket TTS</a><a href="https://github.com/tbenitz/IRL-Voice-Changer">GitHub</a></nav></header>
+<header><b>◉ IRL / ONLINE MODEL LAB</b><nav><a href="../live-vc/">Live microphone changer</a><a href="../live-vc/#rvc">Local RVC test</a><a href="../">Home</a><a href="../pocket-demo/">Pocket TTS (separate)</a><a href="https://github.com/tbenitz/IRL-Voice-Changer">GitHub</a></nav></header>
 <main>
-  <div class="kicker">TEST FIRST · INSTALL LATER</div>
-  <h1>Hear the difference before installing.</h1>
-  <p class="lead">Start with <strong>Pocket TTS</strong>, which runs real ONNX inference on your own device after the model download. Other engines can be compared through external hosted demos or official audio samples. Record a test clip here and reuse it where supported.</p>
-  <p class="intro-note">8 GB Chromebook: try the Pocket low-memory option. Pocket synthesizes speech, rather than converting a live microphone stream. Beatrice, RVC, Seed-VC and MeanVC2 use third-party hosted demos. LLVC offers listening-only samples. The other engines are not locally executable from this webpage.</p>
+  <div class="kicker">REAL VOICE CONVERSION · MODEL COMPARISONS</div>
+  <h1>Compare real voice-conversion models.</h1>
+  <p class="lead">To change your microphone live in ChromeOS, open the <a href="../live-vc/">live voice changer</a>. For AI voice conversion, use our <a href="../live-vc/#rvc">on-device RVC ONNX recording test</a> with your own checkpoint, or compare other actual VC engines in their hosted demos below. Pocket TTS is a separate speech generator, <strong>not</strong> a VC model.</p>
+  <p class="intro-note">8 GB Chromebook: live DSP runs on-device. Neural RVC file conversion is experimental and memory-heavy. These hosted Beatrice/RVC/Seed-VC/MeanVC2 demos run on third-party servers; LLVC provides listening samples. No browser AI-RVC live microphone streaming is claimed here.</p>
   <div class="model-selector" role="tablist" aria-label="Select a model to test">
-    <button class="engine" role="tab" data-engine="pocket" aria-selected="true"><strong>Pocket TTS</strong><small>LOCAL · 8 GB Chromebook mode</small></button>
+    <button class="engine" role="tab" data-engine="pocket" aria-selected="false"><strong>Pocket TTS</strong><small>Separate TTS · NOT voice conversion</small></button>
     <button class="engine" role="tab" data-engine="beatrice" aria-selected="false"><strong>Beatrice v2</strong><small>External hosted converter</small></button>
-    <button class="engine" role="tab" data-engine="rvc" aria-selected="false"><strong>RVC</strong><small>Hosted voice conversion</small></button>
+    <button class="engine" role="tab" data-engine="rvc" aria-selected="true"><strong>RVC</strong><small>Hosted voice conversion</small></button>
     <button class="engine" role="tab" data-engine="seed" aria-selected="false"><strong>Seed-VC</strong><small>Online zero-shot test</small></button>
     <button class="engine" role="tab" data-engine="mean" aria-selected="false"><strong>MeanVC2</strong><small>Free-hosted demo</small></button>
     <button class="engine" role="tab" data-engine="llvc" aria-selected="false"><strong>LLVC</strong><small>Listening only · no inference</small></button>
@@ -57,8 +57,8 @@ audio{width:100%;margin:12px 0}label{font-weight:650;font-size:13px;display:bloc
       </div>
       <div id="record-detail">Browser recording supports Chrome, Edge, and other browsers with MediaRecorder and Web Audio.</div>
       <div class="info">
-        <b id="feature-title">Pocket: test your own voice locally</b>
-        <p id="feature-copy">Open Pocket Studio to load a real ONNX model, record or upload a permitted voice sample, and generate audio locally.</p>
+        <b id="feature-title">RVC: trained checkpoint conversion</b>
+        <p id="feature-copy">RVC requires a trained checkpoint. Use a hosted converter here or open the local experimental ONNX RVC test.</p>
       </div>
       <div class="notice" id="privacy">When you open a hosted demo and upload your recording, that audio is processed according to the hosting provider's privacy policy. Do not submit confidential calls or someone else's voice without permission.</div>
       <p style="font-size:13px">Want live, low-latency microphone conversion afterwards? <a href="https://github.com/tbenitz/IRL-Voice-Changer/actions/workflows/windows.yml">Download the Windows app</a> and install the model you prefer.</p>
@@ -67,15 +67,15 @@ audio{width:100%;margin:12px 0}label{font-weight:650;font-size:13px;display:bloc
       <div class="specific">
         <div>
           <div class="kicker">REAL MODEL PREVIEW</div>
-          <h2 id="demo-title">Pocket TTS · local ONNX speech</h2>
-          <p id="demo-desc">Run Pocket TTS on your device. The initial model download is about 200 MB.</p>
-          <div class="model-note" id="demo-note">Local speech synthesis · low-memory mode recommended on Chromebook · not live voice conversion.</div>
+          <h2 id="demo-title">RVC · hosted voice conversion</h2>
+          <p id="demo-desc">RVC changes a source recording with a pretrained RVC model; use the compatible checkpoint in the hosted converter.</p>
+          <div class="model-note" id="demo-note">Hosted model inference; for local RVC open the separate on-device test.</div>
         </div>
-        <a class="btn primary" href="../pocket-demo/studio/index.html?irl-mic=1" id="open" target="_blank" rel="noopener noreferrer">Open full Pocket Studio ↗</a>
+        <a class="btn primary" href="https://huggingface.co/spaces/Luminia/rvc-beatrice-voice-conversion" id="open" target="_blank" rel="noopener noreferrer">Open RVC demo ↗</a>
       </div>
       <div id="placeholder" class="placeholder hidden">A hosted demo is not available for this model. The link opens the model authors' published sample comparisons instead. This does not process your microphone recording.</div>
       <iframe id="embedded" title="Voice model preview" loading="lazy" referrerpolicy="no-referrer" allow="microphone; clipboard-read; clipboard-write" src="about:blank"></iframe>
-      <div class="panel-foot"><span id="provider-footer">Pocket synthesis runs locally; the model download needs internet.</span><a id="source" href="https://github.com/kyutai-labs/pocket-tts" target="_blank" rel="noopener noreferrer">Model source ↗</a></div>
+      <div class="panel-foot"><span id="provider-footer">Hosted RVC conversion uses a third-party inference provider.</span><a id="source" href="https://github.com/kyutai-labs/pocket-tts" target="_blank" rel="noopener noreferrer">Model source ↗</a></div>
     </section>
   </div>
   <div class="faq">
@@ -111,7 +111,7 @@ const MODELS = {
 };
 const $=id=>document.getElementById(id);
 const buttons=[...document.querySelectorAll("[data-engine]")];
-let selected="pocket";
+let selected="rvc";
 function choose(key) {
   const item=MODELS[key];
   if(!item)return;
