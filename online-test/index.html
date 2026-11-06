@@ -30,15 +30,15 @@ audio{width:100%;margin:12px 0}label{font-weight:650;font-size:13px;display:bloc
 <main>
   <div class="kicker">TEST FIRST · INSTALL LATER</div>
   <h1>Hear the difference before installing.</h1>
-  <p class="lead">Compare voice conversion models with genuine third-party hosted inference demos. You can record a short voice sample here and download the WAV to use in each provider's test. The models themselves run on the external demo's servers—not on GitHub Pages.</p>
-  <p class="intro-note">Online conversions are generally record/upload → process → listen, not instant Discord-style live microphone routing. Public demo availability, limits, and privacy policies are controlled by their operators.</p>
+  <p class="lead">Start with <strong>Pocket TTS</strong>, which runs real ONNX inference on your own device after the model download. Other engines can be compared through external hosted demos or official audio samples. Record a test clip here and reuse it where supported.</p>
+  <p class="intro-note">8 GB Chromebook: try the Pocket low-memory option. Pocket synthesizes speech, rather than converting a live microphone stream. Beatrice, RVC, Seed-VC and MeanVC2 use third-party hosted demos. LLVC offers listening-only samples. The other engines are not locally executable from this webpage.</p>
   <div class="model-selector" role="tablist" aria-label="Select a model to test">
-    <button class="engine" role="tab" data-engine="beatrice" aria-selected="true"><strong>Beatrice v2</strong><small>Hosted model converter</small></button>
+    <button class="engine" role="tab" data-engine="pocket" aria-selected="true"><strong>Pocket TTS</strong><small>LOCAL · 8 GB Chromebook mode</small></button>
+    <button class="engine" role="tab" data-engine="beatrice" aria-selected="false"><strong>Beatrice v2</strong><small>External hosted converter</small></button>
     <button class="engine" role="tab" data-engine="rvc" aria-selected="false"><strong>RVC</strong><small>Hosted voice conversion</small></button>
     <button class="engine" role="tab" data-engine="seed" aria-selected="false"><strong>Seed-VC</strong><small>Online zero-shot test</small></button>
     <button class="engine" role="tab" data-engine="mean" aria-selected="false"><strong>MeanVC2</strong><small>Free-hosted demo</small></button>
-    <button class="engine" role="tab" data-engine="llvc" aria-selected="false"><strong>LLVC</strong><small>Official listening samples</small></button>
-    <button class="engine" role="tab" data-engine="pocket" aria-selected="false"><strong>Pocket TTS</strong><small>Real browser ONNX engine</small></button>
+    <button class="engine" role="tab" data-engine="llvc" aria-selected="false"><strong>LLVC</strong><small>Listening only · no inference</small></button>
   </div>
   <div class="layout">
     <section class="card" aria-labelledby="recorder-heading">
@@ -57,8 +57,8 @@ audio{width:100%;margin:12px 0}label{font-weight:650;font-size:13px;display:bloc
       </div>
       <div id="record-detail">Browser recording supports Chrome, Edge, and other browsers with MediaRecorder and Web Audio.</div>
       <div class="info">
-        <b id="feature-title">Beatrice v2: test a converted voice</b>
-        <p id="feature-copy">The hosted Beatrice demo accepts a source recording and a compatible voice model file. The model upload is optional only if the hosted service provides a built-in voice.</p>
+        <b id="feature-title">Pocket: test your own voice locally</b>
+        <p id="feature-copy">Open Pocket Studio to load a real ONNX model, record or upload a permitted voice sample, and generate audio locally.</p>
       </div>
       <div class="notice" id="privacy">When you open a hosted demo and upload your recording, that audio is processed according to the hosting provider's privacy policy. Do not submit confidential calls or someone else's voice without permission.</div>
       <p style="font-size:13px">Want live, low-latency microphone conversion afterwards? <a href="https://github.com/tbenitz/IRL-Voice-Changer/actions/workflows/windows.yml">Download the Windows app</a> and install the model you prefer.</p>
@@ -66,16 +66,16 @@ audio{width:100%;margin:12px 0}label{font-weight:650;font-size:13px;display:bloc
     <section class="card tester" role="tabpanel" aria-label="Selected model's online demo">
       <div class="specific">
         <div>
-          <div class="kicker">PROVIDER MODEL DEMO</div>
-          <h2 id="demo-title">Beatrice v2 · online conversion</h2>
-          <p id="demo-desc">Choose Beatrice v2 in the hosted Gradio interface, upload voice/model files and run actual inference.</p>
-          <div class="model-note" id="demo-note">This is not a live 10ms browser microphone stream.</div>
+          <div class="kicker">REAL MODEL PREVIEW</div>
+          <h2 id="demo-title">Pocket TTS · local ONNX speech</h2>
+          <p id="demo-desc">Run Pocket TTS on your device. The initial model download is about 200 MB.</p>
+          <div class="model-note" id="demo-note">Local speech synthesis · low-memory mode recommended on Chromebook · not live voice conversion.</div>
         </div>
-        <a class="btn primary" href="https://huggingface.co/spaces/Luminia/rvc-beatrice-voice-conversion" id="open" target="_blank" rel="noopener noreferrer">Open full demo ↗</a>
+        <a class="btn primary" href="../pocket-demo/studio/index.html?irl-mic=1" id="open" target="_blank" rel="noopener noreferrer">Open full Pocket Studio ↗</a>
       </div>
       <div id="placeholder" class="placeholder hidden">A hosted demo is not available for this model. The link opens the model authors' published sample comparisons instead. This does not process your microphone recording.</div>
-      <iframe id="embedded" title="Beatrice online voice conversion hosted demo" loading="lazy" referrerpolicy="no-referrer" allow="microphone; clipboard-read; clipboard-write" src="https://luminia-rvc-beatrice-voice-conversion.hf.space"></iframe>
-      <div class="panel-foot"><span>External demo embedded with permission provided by its host · if blank, click Open full demo</span><a id="source" href="https://github.com/w-okada/voice-changer" target="_blank" rel="noopener noreferrer">Model source ↗</a></div>
+      <iframe id="embedded" title="Voice model preview" loading="lazy" referrerpolicy="no-referrer" allow="microphone; clipboard-read; clipboard-write" src="about:blank"></iframe>
+      <div class="panel-foot"><span id="provider-footer">Pocket synthesis runs locally; the model download needs internet.</span><a id="source" href="https://github.com/kyutai-labs/pocket-tts" target="_blank" rel="noopener noreferrer">Model source ↗</a></div>
     </section>
   </div>
   <div class="faq">
@@ -105,13 +105,13 @@ const MODELS = {
   llvc: { title:"LLVC · published audio comparisons", url:"https://koeai.github.io/llvc-demo/", embed:"", source:"https://github.com/KoeAI/LLVC",
     desc:"Hear the author's sample conversion comparisons. No independently verified public LLVC microphone/upload inference service is available.", note:"Audio samples only · cannot process your new test recording online here.",
     title2:"LLVC: no public interactive endpoint", copy:"LLVC publishes comparative audio demos. To convert your own voice, use the experimental local microphone adapter in the Windows application." },
-  pocket: { title:"Pocket TTS · real in-browser voice synthesis", url:"../pocket-demo/studio/index.html", embed:"../pocket-demo/studio/index.html", source:"https://github.com/tbenitz/A-Portable-Voice-Clone-Exe",
+  pocket: { title:"Pocket TTS · real in-browser voice synthesis", url:"../pocket-demo/studio/index.html?irl-mic=1", embed:"../pocket-demo/studio/index.html", source:"https://github.com/tbenitz/A-Portable-Voice-Clone-Exe",
     desc:"Select or upload a target voice in the complete Pocket Studio. Type text to generate genuine cloned voice audio on your device.", note:"Full browser ONNX engine · first model download is large · generation may be slow on CPU.",
     title2:"Pocket: speech generation not live VC", copy:"For the clearest test, open the full Pocket Studio and generate typed speech first. The separate microphone experiment is available under Pocket TTS in the top navigation." }
 };
 const $=id=>document.getElementById(id);
 const buttons=[...document.querySelectorAll("[data-engine]")];
-let selected="beatrice";
+let selected="pocket";
 function choose(key) {
   const item=MODELS[key];
   if(!item)return;
@@ -125,6 +125,7 @@ function choose(key) {
   $("open").href=item.url;
   $("open").textContent=key==="llvc"?"Listen to samples ↗":key==="pocket"?"Open full Pocket Studio ↗":"Open full demo ↗";
   $("source").href=item.source;
+  $("provider-footer").textContent = key === "pocket" ? "Local inference · first visit downloads weights; mic transcription may use an online service." : key === "llvc" ? "Published listening samples only · no custom conversion." : "Third-party hosted inference · uploaded voice is processed by the provider.";
   $("placeholder").classList.toggle("hidden",Boolean(item.embed));
   $("embedded").classList.toggle("hidden",!item.embed);
   if(!item.embed){$("embedded").setAttribute("src","about:blank");}
