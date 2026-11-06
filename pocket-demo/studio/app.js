@@ -209,6 +209,13 @@ class PocketVoice {
       if (this.isGenerating || this.isModelLoading || this.isVoiceEncoding) return;
       this.isModelLoading = true;
       this.isWorkerReady = false;
+      // Previous-language embeddings may not match the next checkpoint.
+      this.customVoiceLoaded = false;
+      this.activeSavedVoiceId = null;
+      this.activeVoice = null;
+      this.lastClonedPCM = null;
+      this.updateSavedVoicesActive();
+      this.setCloneStatus("Language changed. Re-select a saved voice or record a new reference after loading.", "");
       this.modelProgress.hidden = false;
       this.modelProgress.removeAttribute("value");
       this.runtimeBadge.textContent = "Switching";
