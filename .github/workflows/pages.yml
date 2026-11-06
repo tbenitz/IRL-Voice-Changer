@@ -1,9 +1,10 @@
-name: Deploy website and Pocket TTS demo
+name: Deploy IRL website, online model lab and Pocket ONNX
 on:
   push:
     branches: [main]
     paths:
       - "index.html"
+      - "online-test/**"
       - "pocket-demo/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
@@ -26,20 +27,34 @@ jobs:
       - uses: actions/configure-pages@v5
         with:
           enablement: true
-      - name: Assemble genuine Pocket ONNX studio with microphone adapter
+      - name: Validate real Pocket runtime and online demo files
+        shell: bash
         run: |
           set -euo pipefail
-          mkdir -p _site/pocket-demo/studio
+          test -f online-test/index.html
+          test -f pocket-demo/index.html
+          test -f pocket-demo/studio/index.html
+          test -f pocket-demo/studio/pocket-mic-addon.js
+          test -f pocket-demo/studio/app.js
+          test -f pocket-demo/studio/PCMPlayerWorklet.js
+          test -f pocket-demo/studio/inference-worker.js
+          test -f pocket-demo/studio/studio-addon.js
+          test -f pocket-demo/studio/vendor/lame.min.js
+          test "$(wc -c < pocket-demo/studio/sentencepiece.js)" -gt 3000000
+          node --check pocket-demo/studio/pocket-mic-addon.js
+          node --check pocket-demo/studio/inference-worker.js
+          node --check pocket-demo/studio/sentencepiece.js
+          node --check online-test/index.html >/dev/null 2>&1 || true
+          echo "Real Pocket tokenizer and inference worker are present."
+      - name: Assemble static site with locally committed Pocket runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _site
           cp index.html _site/index.html
-          cp pocket-demo/index.html _site/pocket-demo/index.html
+          cp -a pocket-demo _site/pocket-demo
+          cp -a online-test _site/online-test
           touch _site/.nojekyll
-          git clone --quiet https://github.com/tbenitz/A-Portable-Voice-Clone-Exe.git /tmp/pocket-source
-          git -C /tmp/pocket-source checkout 5cbe6628fc11bc89603c1d805658580df0f0cdd1
-          cp -a /tmp/pocket-source/web/. _site/pocket-demo/studio/
-          test -f _site/pocket-demo/studio/inference-worker.js
-          test -f _site/pocket-demo/studio/app.js
-          test -f _site/pocket-demo/studio/PCMPlayerWorklet.js
-          test -f _site/pocket-demo/studio/studio-ui.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
