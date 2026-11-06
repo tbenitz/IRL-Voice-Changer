@@ -47,7 +47,11 @@ async function contentVec(audio){
  const names=cv.inputNames,feeds={};
  for(const name of names){
   if(name==="source"||name==="audio"||name==="input"||name==="waveform"){
-   feeds[name]=tensor("float32",audio,name==="source"?[1,1,audio.length]:[1,audio.length]);
+   const meta=cv.inputMetadata?.[name];
+   const dims=meta?.dimensions||meta?.dims||[];
+   // Different ContentVec ONNX exporters use [1,samples] or [1,1,samples].
+   const shape=dims.length===3?[1,1,audio.length]:[1,audio.length];
+   feeds[name]=tensor("float32",audio,shape);
   }else if(name==="padding_mask")feeds[name]=tensor("bool",new Uint8Array(audio.length),[1,audio.length]);
   else if(name==="output_layer")feeds[name]=tensor("int64",new BigInt64Array([12n]),[1]);
   else throw Error("Unsupported ContentVec input "+name);
