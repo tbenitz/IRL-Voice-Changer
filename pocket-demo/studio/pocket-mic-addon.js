@@ -55,7 +55,7 @@
     const text=$("irl-mic-text").value.trim();
     if(!text){report("No words available. Speak a phrase or type text.");return}
     const p=app();
-    if(!p?.isWorkerReady){report("Pocket ONNX has not loaded yet. Wait for the Studio to say Ready.");return}
+    if(!p?.isWorkerReady){report("Press Load Pocket model above, then wait for Ready before generating.");return}
     if(p.isGenerating||p.isVoiceEncoding){report("Pocket is still processing. Try when it finishes.");return}
     if(!p.el?.btnGenerate || p.el.btnGenerate.disabled){
       report("Choose an available voice in the Pocket Studio. The main Generate button is disabled.");
@@ -98,7 +98,7 @@
       report("Speech recognition error: "+e.error+". You can type your words instead.");
     };
     recognition.onend=()=>{active=false;$("irl-mic-start").disabled=false;$("irl-mic-stop").disabled=true};
-    report("Wait for Pocket model to load and choose a voice. Then click Speak a phrase.");
+    report("Press Load Pocket model above, wait for Ready, then choose a voice and speak.");
   }else{
     $("irl-mic-start").disabled=true;
     report("SpeechRecognition isn't available in this browser. Use typed words instead, or clone/record a voice in the original Studio.");
@@ -106,7 +106,7 @@
   $("irl-mic-start").addEventListener("click",()=>{
     if(!recognition||active)return;
     const p=app();
-    if(!p?.isWorkerReady){report("Pocket model still loading. Wait until Ready before using microphone.");return}
+    if(!p?.isWorkerReady){report("Press Load Pocket model above, then wait for Ready before speaking.");return}
     if(p.isGenerating){report("Pocket is currently generating. Finish that first.");return}
     recognized="";consumed=false;$("irl-mic-text").value="";
     unlock();
@@ -130,7 +130,7 @@
       pending=false;actuallyGenerated=false;
       report("Pocket generation complete. Replay or download in the Studio.");
     }
-    if(!pending&&!p.isWorkerReady){
+    if(!pending&&!p.isWorkerReady && p.isModelLoading){
       const status=document.getElementById("status-text")?.textContent;
       if(status)report("Pocket ONNX loading: "+status);
     }
