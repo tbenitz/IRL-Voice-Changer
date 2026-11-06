@@ -40,8 +40,8 @@ ENGINES = {
         "Import a compatible RVC .pth and optional .index in the upstream real-time GUI. The required HuBERT and RMVPE weights must be downloaded separately; see upstream README."),
     "seed": Engine("seed", "Seed-VC Realtime", "Reference voice · CUDA recommended", "jiaheguo521/seed-vc-realtime", "main", "3.10", "Live · upstream GUI",
         "Use the upstream reference-audio selector. On first launch the default model may download. An NVIDIA GPU is strongly recommended."),
-    "llvc": Engine("llvc", "LLVC", "Efficient conversion · streaming simulation", "KoeAI/LLVC", "main", "3.11", "File conversion · streaming simulation",
-        "LLVC's public infer.py supports processing an audio file with --stream. Its published command is not a live microphone app. Select an audio file, then Convert."),
+    "llvc": Engine("llvc", "LLVC", "Efficient conversion · experimental microphone streaming", "KoeAI/LLVC", "main", "3.11", "Live mic adapter + file mode",
+        "Run a custom low-latency mic adapter using the real pretrained LLVC model and persistent buffers, or switch to the official infer.py file conversion. CPU may underrun on slower machines."),
     "meanvc2": Engine("meanvc2", "MeanVC2", "Reference voice · 40 ms model option", "ASLP-lab/MeanVC2", "main", "3.11", "Live microphone · command-line",
         "Supply a reference WAV in the hub and start upstream run_rt.py --mode realtime. The upstream code chooses the system's default microphone and speaker."),
 }
@@ -154,6 +154,8 @@ def setup_engine(key: str, log, gpu: bool = False):
         log("Beatrice runs from the official VCClient download. Click Download / Help, download the correct edition, then use Select VCClient EXE.")
         return
     src = download_source(engine, log)
+    marker = engine_dir(key) / "setup.done"
+    marker.unlink(missing_ok=True)
     uv = install_uv(log)
     run_logged([str(uv), "python", "install", engine.python_version], None, log)
     interpreter = venv_python(key)
@@ -178,6 +180,11 @@ def setup_engine(key: str, log, gpu: bool = False):
         log("Seed-VC installed; first GUI launch may download checkpoint/config from Hugging Face.")
     elif key == "llvc":
         run_logged(cmd + ["-r", "requirements.txt"], src, log)
+        run_logged(cmd + ["sounddevice>=0.5,<1"], src, log)
+        live_script = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "llvc_live.py"
+        if not live_script.is_file():
+            raise RuntimeError("LLVC live adapter was not bundled with the executable.")
+        shutil.copyfile(live_script, src / "irlvc_llvc_mic.py")
         log("Downloading LLVC's official pretrained model files.")
         run_logged([str(interpreter), "download_models.py"], src, log)
     elif key == "meanvc2":
@@ -190,15 +197,17 @@ def setup_engine(key: str, log, gpu: bool = False):
         run_logged(cmd + ["-r", "requirements.txt"], src, log)
         log("Running upstream initialization.py --task all (downloads trained weights).")
         run_logged([str(interpreter), "initialization.py", "--task", "all"], src, log)
+    marker.write_text("setup completed", encoding="utf-8")
     log("Setup finished for " + engine.title + ". This does not guarantee your audio hardware, model weights and GPU drivers are compatible.")
 
 def engine_is_installed(key: str, settings: dict) -> bool:
     if key == "beatrice":
         return bool(settings.get("beatrice_exe") and Path(settings["beatrice_exe"]).is_file())
-    return venv_python(key).is_file() and source_dir(key).is_dir()
+    return venv_python(key).is_file() and source_dir(key).is_dir() and (engine_dir(key) / "setup.done").is_file()
 
 def launch_args(key: str, settings: dict, *, reference: str = "", input_file: str = "",
-                cpu: bool = True, mean_model: str = "40ms", output_dir: str = "") -> tuple[list[str], Path]:
+                cpu: bool = True, mean_model: str = "40ms", output_dir: str = "",
+                llvc_live: bool = False) -> tuple[list[str], Path]:
     engine = ENGINES[key]
     if key == "beatrice":
         exe = Path(settings.get("beatrice_exe", ""))
@@ -214,6 +223,11 @@ def launch_args(key: str, settings: dict, *, reference: str = "", input_file: st
     if key == "seed":
         return [str(py), "-u", "real-time-gui.py"], src
     if key == "llvc":
+        if llvc_live:
+            adapter = src / "irlvc_llvc_mic.py"
+            if not adapter.is_file():
+                raise ValueError("LLVC microphone adapter missing. Run Set up engine again.")
+            return [str(py), "-u", str(adapter)], src
         if not input_file or not Path(input_file).is_file():
             raise ValueError("Choose a WAV/MP3 audio file before running LLVC.")
         out = Path(output_dir or str(HOME / "outputs")).resolve()
