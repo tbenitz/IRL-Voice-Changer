@@ -206,9 +206,15 @@ class PocketVoice {
     this.el.btnStop.addEventListener("click", () => this.stop());
 
     this.el.langSelect.addEventListener("change", () => {
-      if (this.isGenerating) return;
+      if (this.isGenerating || this.isModelLoading || this.isVoiceEncoding) return;
+      this.isModelLoading = true;
+      this.isWorkerReady = false;
+      this.modelProgress.hidden = false;
+      this.modelProgress.removeAttribute("value");
+      this.runtimeBadge.textContent = "Switching";
+      this.runtimeDetail.textContent = "Replacing the current bundle with " + this.el.langSelect.value + "…";
+      this.resetUI();
       this.worker.postMessage({ type: "set_language", data: { language: this.el.langSelect.value } });
-      this.setLoading(true);
     });
 
     this.el.voiceSelect.addEventListener("change", () => {
@@ -232,37 +238,85 @@ class PocketVoice {
   }
 
   async init() {
-    this.updateStatus("Initializing…", "loading");
+    this.isModelLoading = false;
+    this.modelProgress = document.getElementById("model-progress");
+    this.runtimeDetail = document.getElementById("runtime-detail");
+    this.runtimeBadge = document.getElementById("model-ready-indicator");
+    this.btnLoadModel = document.getElementById("btn-load-model");
+    this.btnRetryModel = document.getElementById("btn-retry-model");
+    this.runtimeProfile = document.getElementById("runtime-profile");
     this.el.btnGenerate.disabled = true;
     this.el.btnRecord.disabled = true;
     this.el.btnUpload.disabled = true;
     this.el.voiceSelect.disabled = true;
     this.el.langSelect.disabled = true;
     this.el.voiceGallery.classList.add("is-disabled");
-    this.setCloneStatus("Loading model… please wait", "");
+    this.setCloneStatus("Load the model above to start testing voices.", "");
+    this.updateStatus("Model not loaded", "idle");
+    this.btnLoadModel.addEventListener("click", () => this.startModel());
+    this.btnRetryModel.addEventListener("click", () => this.startModel());
+    if (new URLSearchParams(location.search).get("autoload") === "1") this.startModel();
+  }
 
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-                  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  startModel() {
+    if (this.isModelLoading || this.isGenerating || this.isVoiceEncoding) return;
+    this.isModelLoading = true;
+    this.isWorkerReady = false;
+    this.customVoiceLoaded = false;
+    this.activeVoice = null;
+    this.worker?.terminate?.();
+    this.worker = null;
+    this.btnLoadModel.disabled = true;
+    this.btnLoadModel.textContent = "Loading model…";
+    this.btnRetryModel.hidden = true;
+    this.runtimeProfile.disabled = true;
+    this.runtimeBadge.textContent = "Loading";
+    this.runtimeDetail.textContent = "Starting Pocket ONNX. Keep this tab open during the initial model download…";
+    this.modelProgress.hidden = false;
+    this.modelProgress.removeAttribute("value");
+    this.setCloneStatus("Loading Pocket models locally…", "");
+    this.resetUI();
+    try {
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      if (isIOS && typeof MainThreadWorkerShim !== "undefined") {
+        this.worker = new MainThreadWorkerShim("./inference-worker.js");
+      } else {
+        this.worker = new Worker("./inference-worker.js?v=20261106-cb1");
+      }
+      this.worker.onmessage = e => this.handleWorkerMessage(e.data);
+      if (this.worker._flushPendingOutbound) this.worker._flushPendingOutbound();
+      this.worker.onerror = e => {
+        console.error("Pocket model worker crashed:", e);
+        this.modelFailed("Model worker crashed. Close other tabs and retry with low memory mode.");
+      };
+      this.worker.postMessage({ type: "load", data: { profile: this.runtimeProfile.value } });
+    } catch (error) {
+      this.modelFailed("Cannot start model: " + error.message);
+    }
+  }
 
-    if (isIOS && typeof MainThreadWorkerShim !== "undefined") {
-      // iOS Web Workers can't allocate enough memory for WASM compilation (~256MB limit).
-      // Run inference on the main thread instead (~1GB+ available).
-      console.log("iOS detected: using MainThreadWorkerShim");
-      this.worker = new MainThreadWorkerShim("./inference-worker.js");
-    } else {
-      this.worker = new Worker("./inference-worker.js?v=2.0.6");
-    }
-    this.worker.onmessage = (e) => this.handleWorkerMessage(e.data);
-    // Flush any messages the worker code sent before onmessage was set
-    if (this.worker._flushPendingOutbound) {
-      this.worker._flushPendingOutbound();
-    }
-    this.worker.onerror = (e) => {
-      console.error("Worker crashed:", e);
-      this.updateStatus("Worker failed to load. Try refreshing.", "error");
-      this.setCloneStatus("Model failed to load", "error");
-    };
-    this.worker.postMessage({ type: "load" });
+  modelFailed(message) {
+    this.isModelLoading = false;
+    this.isWorkerReady = false;
+    this.isVoiceEncoding = false;
+    this.btnLoadModel.disabled = false;
+    this.btnLoadModel.textContent = "Try loading again";
+    this.btnRetryModel.hidden = false;
+    this.runtimeProfile.disabled = false;
+    this.runtimeBadge.textContent = "Failed";
+    this.modelProgress.hidden = true;
+    this.runtimeDetail.textContent = message + " Check model downloads in browser diagnostics if it persists.";
+    this.setCloneStatus(message, "error");
+    this.updateStatus("Model load failed", "error");
+    this.resetUI();
+  }
+
+  noteLoadProgress(status) {
+    if (!this.isModelLoading) return;
+    this.runtimeDetail.textContent = status;
+    const match = /Loading model (\\d)\\/4/i.exec(status);
+    if (match) this.modelProgress.value = Math.max(0, Number(match[1]) - 1);
   }
 
   async ensureAudioContext() {
@@ -288,7 +342,7 @@ class PocketVoice {
     if (this.audioContext.state === "suspended") {
       await this.audioContext.resume();
     }
-    this.player = new PCMPlayer(this.audioContext);
+    this.player = new PCMPlayer(this.audioContext, { minBufferBeforePlaybackMs: 650 });
     this.player.addEventListener("audioEnded", () => {
       if (this.deferStreamEnd) {
         this.deferStreamEnd = false;
@@ -302,6 +356,7 @@ class PocketVoice {
     switch (msg.type) {
       case "status":
         this.updateStatus(msg.status, msg.state);
+        if (msg.state === "loading") this.noteLoadProgress(msg.status);
         break;
 
       case "voices_loaded":
@@ -343,6 +398,16 @@ class PocketVoice {
         break;
 
       case "bundle_loaded":
+        this.isWorkerReady = true;
+        this.isModelLoading = false;
+        this.modelProgress.value = 4;
+        this.modelProgress.hidden = true;
+        this.runtimeBadge.textContent = "Ready";
+        this.runtimeDetail.textContent = "Pocket " + msg.language + " loaded on this device. Choose a voice and try a sample.";
+        this.btnLoadModel.disabled = false;
+        this.btnLoadModel.textContent = "Restart model";
+        this.btnRetryModel.hidden = true;
+        this.runtimeProfile.disabled = false;
         this.resetUI();
         break;
 
@@ -365,9 +430,13 @@ class PocketVoice {
       case "error":
         this.isVoiceEncoding = false;
         console.error("Worker:", msg.error);
-        this.updateStatus(`Error: ${msg.error}`, "error");
-        this.setCloneStatus(msg.error, "error");
-        this.resetUI();
+        if (this.isModelLoading || !this.isWorkerReady) this.modelFailed(String(msg.error));
+        else {
+          this.isGenerating = false;
+          this.updateStatus(`Error: ${msg.error}`, "error");
+          this.setCloneStatus(msg.error, "error");
+          this.resetUI();
+        }
         break;
     }
   }
@@ -886,18 +955,18 @@ class PocketVoice {
   }
 
   resetUI() {
-    this.el.btnGenerate.disabled = !this.isWorkerReady || this.isVoiceEncoding || this.isGenerating;
+    this.el.btnGenerate.disabled = !this.isWorkerReady || this.isModelLoading || this.isVoiceEncoding || this.isGenerating;
     this.el.btnGenerate.classList.remove("is-loading");
     this.el.btnGenerate.classList.toggle("voice-pending", this.isVoiceEncoding);
     this.el.btnGenerate.setAttribute("aria-busy", this.isVoiceEncoding ? "true" : "false");
     this.el.btnGenerate.querySelector(".btn-text").textContent =
       this.isVoiceEncoding ? "Preparing voice…" : "Generate Audio";
     this.el.btnStop.style.display = "none";
-    this.el.btnRecord.disabled = !this.isWorkerReady;
-    this.el.btnUpload.disabled = !this.isWorkerReady;
-    this.el.voiceSelect.disabled = !this.isWorkerReady;
-    this.el.langSelect.disabled = !this.isWorkerReady;
-    this.el.voiceGallery.classList.toggle("is-disabled", !this.isWorkerReady);
+    this.el.btnRecord.disabled = !this.isWorkerReady || this.isModelLoading;
+    this.el.btnUpload.disabled = !this.isWorkerReady || this.isModelLoading;
+    this.el.voiceSelect.disabled = !this.isWorkerReady || this.isModelLoading;
+    this.el.langSelect.disabled = !this.isWorkerReady || this.isModelLoading;
+    this.el.voiceGallery.classList.toggle("is-disabled", !this.isWorkerReady || this.isModelLoading);
   }
 
   updateStatus(text, state) {
