@@ -30,7 +30,8 @@
     '<button type="button" id="irl-mic-stop" disabled>■ Stop</button><button type="button" id="irl-mic-generate">▶ Generate words</button></div>' +
     '<textarea id="irl-mic-text" aria-label="Spoken words" placeholder="Your transcript appears here. You can also type a test phrase."></textarea>' +
     '<div class="status" id="irl-mic-status" role="status" aria-live="polite">Checking Pocket ONNX engine…</div>' +
-    '<p>Browser speech recognition may send audio to its online service. Pocket generation is local. Wear headphones to prevent feedback.</p>';
+    '<p>Browser speech recognition may send audio to its online service. Pocket generation is local. Wear headphones to prevent feedback.</p>' +
+    '<p><a style="color:#5aded0" href="../diagnostics.html">Run browser and model diagnostics if this fails ↗</a></p>';
   document.body.appendChild(panel);
   const toggle=document.createElement("button");
   toggle.type="button"; toggle.id="irl-mic-toggle"; toggle.textContent="🎙 Pocket microphone";
