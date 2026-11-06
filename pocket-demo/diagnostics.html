@@ -25,7 +25,7 @@ small{color:#9bb7c6}.note{border-left:3px solid #5ce1d4;padding:10px 16px;backgr
 </div>
 <div id="results" aria-live="polite"><p>Click Run checks to test your browser and hosted model resources.</p></div>
 <div class="note"><strong>If Pocket remains stuck:</strong><p>Open the full Studio, choose a built-in voice and test typed speech. First-time model downloads can take time, particularly with limited RAM. If model downloads or WASM runtime fail, disable strict network blocking for the trusted model hosts, or try recent Chrome/Edge and reload the page. Browser microphone dictation may require its own speech-recognition service.</p></div>
-<p><a href="./studio/index.html">Open actual Pocket ONNX Studio ↗</a> · <a href="../online-test/?model=pocket">Online model lab ↗</a></p>
+<p><a href="./studio/index.html?irl-mic=1">Open Pocket ONNX Studio (choose Load Pocket model) ↗</a> · <a href="../online-test/?model=pocket">Model comparison lab ↗</a></p>
 </main>
 <script>
 (()=>{
@@ -62,7 +62,7 @@ $("test").addEventListener("click",async()=>{
  await request("./studio/inference-worker.js","Pocket ONNX worker");
  await request("./studio/sentencepiece.js","Pocket tokenizer (approximately 4 MB)",3000000);
  await request("./studio/pocket-mic-addon.js","Direct microphone adapter");
- await request("https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.all.min.js","ONNX Runtime CDN");
+ await request("https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js","WASM-only ONNX Runtime CDN");
  await request("https://huggingface.co/spaces/KevinAHM/pocket-tts-web/resolve/main/onnx/english_2026-04/bundle.json","Pocket model metadata");
 });
 $("mic").addEventListener("click",async()=>{
