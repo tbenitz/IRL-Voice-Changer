@@ -33,6 +33,7 @@ jobs:
           set -euo pipefail
           test -f online-test/index.html
           test -f pocket-demo/index.html
+          test -f pocket-demo/diagnostics.html
           test -f pocket-demo/studio/index.html
           test -f pocket-demo/studio/pocket-mic-addon.js
           test -f pocket-demo/studio/app.js
@@ -44,7 +45,17 @@ jobs:
           node --check pocket-demo/studio/pocket-mic-addon.js
           node --check pocket-demo/studio/inference-worker.js
           node --check pocket-demo/studio/sentencepiece.js
-          node --check online-test/index.html >/dev/null 2>&1 || true
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          for name in ("online-test/index.html", "pocket-demo/index.html",
+                       "pocket-demo/diagnostics.html"):
+              content = Path(name).read_text(encoding="utf-8")
+              blocks = re.findall(r"<script[^>]*>([\s\S]*?)</script>", content)
+              for i, body in enumerate(blocks):
+                  Path("/tmp/inline_" + Path(name).parent.name + "_" + str(i) + ".js").write_text(body, encoding="utf-8")
+          PY
+          for code in /tmp/inline_*.js; do node --check "$code"; done
           echo "Real Pocket tokenizer and inference worker are present."
       - name: Assemble static site with locally committed Pocket runtime
         shell: bash
