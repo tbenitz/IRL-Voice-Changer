@@ -10,6 +10,7 @@ on:
       - "tests/test_web_studio.py"
       - "tests/test_live_voice.cjs"
       - "tests/test_rvc_live.cjs"
+      - "tests/test_rvc_pipeline_stub.cjs"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 permissions:
@@ -57,6 +58,7 @@ jobs:
           node --check live-vc/rvc-live-ui.js
           node tests/test_live_voice.cjs
           node tests/test_rvc_live.cjs
+          node tests/test_rvc_pipeline_stub.cjs
           node --check pocket-demo/studio/pocket-mic-addon.js
           node --check pocket-demo/studio/inference-worker.js
           node --input-type=module --check < pocket-demo/studio/app.js
