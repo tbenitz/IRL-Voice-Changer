@@ -1,6 +1,19 @@
 # IRL Voice Changer
 
-A Windows desktop control center for **five genuine voice-conversion engines**, a web model testing lab, and a separate repaired **Pocket TTS microphone experiment**.
+**Actual live Chromebook microphone processing:** https://tbenitz.github.io/IRL-Voice-Changer/live-vc/  
+**Real ONNX RVC recording conversion (experimental):** https://tbenitz.github.io/IRL-Voice-Changer/live-vc/#rvc  
+**Local testing choices (no embedded hosted demos):** https://tbenitz.github.io/IRL-Voice-Changer/online-test/
+
+## What's implemented—and what still isn't
+
+The live microphone page is **client-side AudioWorklet DSP**: microphone PCM is transformed by granular pitch processing, filtering, and gating and sent to the local output. It **is not an RVC/Beatrice/Seed-VC model**. The fail-closed audio chain never automatically forwards dry microphone audio.
+
+The separate RVC panel calls a **real ONNX RVC v2** model pipeline (ContentVec → RMVPE → RVC generator) using the browser-based `rvc-web-runtime` package. It accepts an **actual trained ONNX voice checkpoint** plus audio and loads ~370 MB of supporting models on demand. This is **file-to-file inference, not real-time model streaming**. Chromebook memory and runtime compatibility are unverified, and browser processing may fail.
+
+There is **no working 8 GB Chromebook real-time neural RVC implementation** in this repository at present. A 3-second MP3 is reference audio, not a trained RVC checkpoint; zero-shot reference conversion requires a separate compatible voice-conversion engine. The other requested neural engines have not been ported into the local browser and are not represented by embedded Hugging Face iframes. Pocket TTS is a separate text-to-speech experiment, **not voice conversion**.
+
+
+This repository combines a Windows desktop control center for five upstream neural VC engines, a browser live DSP voice changer, a local experimental RVC ONNX recording converter, and a separate Pocket TTS speech generator.
 
 Website: https://tbenitz.github.io/IRL-Voice-Changer/  
 **Try models online:** https://tbenitz.github.io/IRL-Voice-Changer/online-test/  
@@ -10,7 +23,7 @@ All build runs: https://github.com/tbenitz/IRL-Voice-Changer/actions
 
 ## Try before installing — online model lab
 
-Visit the [Online Voice Model Lab](https://tbenitz.github.io/IRL-Voice-Changer/online-test/). Record your voice and save a 16 kHz mono WAV, or use existing audio. The on-site recorder keeps audio in your browser unless you choose to upload it to a hosted inference provider.
+Visit the [Local Test Lab](https://tbenitz.github.io/IRL-Voice-Changer/online-test/), then open the [actual live voice changer](https://tbenitz.github.io/IRL-Voice-Changer/live-vc/) or the [real RVC model test](https://tbenitz.github.io/IRL-Voice-Changer/live-vc/#rvc). These interfaces do not embed Hugging Face inference pages.
 
 | Model | Online preview |
 | --- | --- |
