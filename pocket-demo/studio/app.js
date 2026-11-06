@@ -354,7 +354,7 @@ class PocketVoice {
   }
 
   handleWorkerMessage(msg) {
-    console.log("[Worker Event] " + JSON.stringify(msg));
+    if (msg.type !== "audio_chunk") console.log("[Pocket Worker]", msg.type, msg.status || msg.error || "");
     switch (msg.type) {
       case "status":
         this.updateStatus(msg.status, msg.state);
