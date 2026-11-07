@@ -89,6 +89,12 @@ async function infer(chunk){
      "or train with genuinely aligned conversion pairs.");
    // Never play these near-dry audio blocks as a success.
    send("dropped",{reason:"Unchanged model output muted; verifying voice-change strength"});
+   // Keep history advancing even when near-identity audio is rejected.
+   if(chunk.length>=history.length)history.set(chunk.subarray(chunk.length-history.length));
+   else{
+    history.copyWithin(0,chunk.length);
+    history.set(chunk,history.length-chunk.length);
+   }
    return;
   }
   if(rms>0.012)unchangedSpeechChunks=0;
