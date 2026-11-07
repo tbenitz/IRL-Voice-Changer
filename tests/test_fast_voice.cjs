@@ -96,6 +96,38 @@ vm.runInNewContext(source,context);
   "Near-identical experimental model played the original mic as converted speech");
  assert(outputs.some(x=>x.type==="error"&&/essentially the same microphone waveform|almost silence/.test(x.text)),
   "Custom model should explain why near-identity voice conversion was muted");
+ // Exercise the browser's EXPLICIT post-ONNX pitch finish, not a mock
+ // pitch-only bypass: even in this test, the model session runs first.
+ // A steady 110 Hz input should be pitched up after identity neural fixture.
+ function estimatedFrequency(pcm){
+  let crossings=0;
+  for(let i=1;i<pcm.length;i++)if(pcm[i-1]<=0&&pcm[i]>0)crossings++;
+  return crossings/(pcm.length/16000);
+ }
+ await self.onmessage({data:{type:"init",model:new ArrayBuffer(66453),
+  historySamples:2048,requireVoiceChange:false,pitchSemitones:6}});
+ let pitched=null;
+ for(let block=0;block<4;block++){
+  const sine=new Float32Array(8192);
+  for(let i=0;i<8192;i++)
+   sine[i]=.2*Math.sin(2*Math.PI*110*(block*8192+i)/16000);
+  const previous=outputs.filter(x=>x.type==="audio").length;
+  await self.onmessage({data:{type:"convert",pcm:sine}});
+  const next=outputs.filter(x=>x.type==="audio");
+  assert.equal(next.length,previous+1,"Post-pitch DSP must not skip real ONNX inference");
+  pitched=next.at(-1);
+ }
+ assert.equal(pitched.postPitchSemitones,6);
+ assert.equal(pitched.pcm.length,8192,"Pitch finishing must not speed up or shorten speech");
+ assert(pitched.pcm.every(Number.isFinite),"Pitch finisher produced non-finite samples");
+ const outputHz=estimatedFrequency(pitched.pcm);
+ assert(outputHz>110*1.20 && outputHz<110*1.65,
+  "Post-neural pitch shifter failed to raise 110 Hz test input, measured "+outputHz.toFixed(1)+" Hz");
+ await self.onmessage({data:{type:"config",pitchSemitones:0}});
+ const pureInput=new Float32Array(8192).fill(.125);
+ await self.onmessage({data:{type:"convert",pcm:pureInput}});
+ assert.equal(outputs.filter(x=>x.type==="audio").at(-1).postPitchSemitones,0,
+  "0 st should run model output without pitch DSP");
  await self.onmessage({data:{type:"init",model:new ArrayBuffer(32),historySamples:2048}});
  assert(outputs.some(x=>x.type==="error" && /empty, invalid, or incomplete/.test(x.text)),
         "Empty or obviously incomplete models must be rejected without leaking dry microphone");
@@ -115,6 +147,8 @@ vm.runInNewContext(source,context);
  assert(control.includes("requireVoiceChange:true"),
    "Live controller must enforce no-passthrough protection for saved/manual ONNX models");
   assert(html.includes('id="rtf"'),"Real-time speed diagnostics missing");
+ assert(html.includes('id="pitch-finish"')&&html.includes('after neural ONNX'),
+  "Pitch finish must be described as separate post-neural DSP");
  assert(html.includes('id="wave-change"')&&html.includes('id="wave-corr"'),
   "The UI must show measured neural waveform changes, not just claim AI output");
  assert(html.includes('id="audit-start"')&&html.includes('id="audit-output"')&&html.includes('id="audit-source"'),
