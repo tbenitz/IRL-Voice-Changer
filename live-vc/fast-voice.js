@@ -14,7 +14,7 @@ const voices={
 };
 const app={token:0,loading:false,active:false,worker:null,stream:null,ctx:null,
  source:null,capture:null,gain:null,sources:new Set(),abort:null,inFlight:false,pending:null,
- nextPlayTime:0,drops:0,chunkFrames:2048,historySamples:4096,lastCapture:0,
+ nextPlayTime:0,drops:0,chunkFrames:8192,historySamples:16000,lastCapture:0,
  workerBlobUrl:null,verifiedWorkerBuild:false,
  audit:null,inFlightSource:null,auditUrls:[]};
 const CACHE="irl-fast-neural-voice-models", STORE="weights";
@@ -286,10 +286,10 @@ function play(d){
  $("wave-change").textContent=voiced&&Number.isFinite(delta)?(delta*100).toFixed(1)+"%":"—";
  $("wave-corr").textContent=voiced&&Number.isFinite(correlation)?correlation.toFixed(4):"—";
  $("voice-change-note").textContent=!voiced
-  ?"Speak naturally to measure how much the ONNX output differs from your microphone."
+  ?"Speaker identity NOT VERIFIED. Speak normally to measure signal differences and use the A/B recording to judge sound."
   :correlation>.97
-   ?"Warning: ONNX audio still tracks the original waveform closely. This may NOT sound like another speaker."
-   :"ONNX output differs from the input waveform. Compare the A/B recordings to judge audible timbre; this is NOT proof of speaker identity.";
+   ?"Speaker identity NOT VERIFIED. ONNX output tracks the microphone closely; little audible speaker change may be occurring."
+   :"Speaker identity NOT VERIFIED. Waveform differences could be filtering, phase changes or distortion. Listen to the A/B recording for audible speaker change.";
  $("performance-note").textContent=rtf<=.7?"Running faster than real time with useful headroom.":
   rtf<1?"Near the processing limit; try a larger chunk if audio skips.":
   "This setting is slower than real-time on your device. Try a shorter history or larger chunk.";
@@ -323,10 +323,10 @@ function play(d){
  app.nextPlayTime=scheduled+buf.duration;
  meters("output-meter",pcm);
  $("lag").textContent=Math.round(actualDelay+(scheduled-ctx.currentTime)*1000);
- info("ONNX-generated PCM scheduled: "+Math.round(elapsed)+" ms inference for "+
+ info("Unverified model PCM scheduled: "+Math.round(elapsed)+" ms inference for "+
   Math.round(app.chunkFrames/16)+" ms captured speech. Waveform correlation "+
   (Number.isFinite(correlation)?correlation.toFixed(3):"unknown")+
-  "; RTF "+rtf.toFixed(2)+". Listen to the separate A/B recording to verify timbre.");
+  "; RTF "+rtf.toFixed(2)+". A numerical waveform difference is NOT speaker-conversion proof. Listen to the A/B audio.");
 }
 function eventFromWorker(e,token){
  if(token!==app.token)return;
@@ -387,7 +387,7 @@ async function activateMic(token){
  app.loading=false;app.active=true;
  capture.port.postMessage({type:"enable",enabled:true});
  for(const t of stream.getTracks())t.onended=()=>{void stop("Microphone disconnected.")};
- toggle();badge("LIVE NEURAL", "live");
+ toggle();badge("ONNX ACTIVE · VOICE UNVERIFIED", "live");
  info(["saved","custom"].includes($("voice").value)
   ? "Experimental ONNX loaded with voice-change protection: nearly unchanged microphone audio will be muted, not mistaken for a converted voice."
   : "Running pre-trained 13.7 MB voice conversion locally at 16 kHz. Headphones recommended.");
@@ -399,7 +399,7 @@ async function start(){
  }
  app.loading=true;app.drops=0;app.inFlight=false;app.pending=null;
  app.chunkFrames=Number($("chunk").value)||8192;
- app.historySamples=Number($("history").value)||4096;
+ app.historySamples=Number($("history").value)||16000;
  $("drops").textContent="0";$("lag").textContent="—";$("inference").textContent="—";$("rtf").textContent="—";
  $("wave-change").textContent="—";$("wave-corr").textContent="—";
  $("voice-change-note").textContent="Speak after model initialization to measure the true ONNX output versus input. This is not a speaker identity score.";
