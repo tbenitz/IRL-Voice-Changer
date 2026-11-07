@@ -6,6 +6,7 @@
 "use strict";
 const $=id=>document.getElementById(id);
 const MODEL_ROOT="https://raw.githubusercontent.com/ultrapg/hevoicechanger/main/models/";
+const FAST_BUILD="20261106-cacheguard-v5";
 const voices={
  hfg:{name:"female_voice_hfg_new.onnx",bytes:13756183},
  old_hq:{name:"female_voice_old_hq.onnx",bytes:13718163},
@@ -13,8 +14,30 @@ const voices={
 };
 const app={token:0,loading:false,active:false,worker:null,stream:null,ctx:null,
  source:null,capture:null,gain:null,sources:new Set(),abort:null,inFlight:false,pending:null,
- nextPlayTime:0,drops:0,chunkFrames:2048,historySamples:4096,lastCapture:0};
+ nextPlayTime:0,drops:0,chunkFrames:2048,historySamples:4096,lastCapture:0,
+ workerBlobUrl:null,verifiedWorkerBuild:false};
 const CACHE="irl-fast-neural-voice-models", STORE="weights";
+async function loadVerifiedWorker(){
+ // Fetch tiny worker (not voice weights) using no browser/CDN cache.
+ // A mismatched old worker will never run model inference or access the mic.
+ const workerPath=new URL("./fast-voice-worker.js",window.location.href);
+ workerPath.searchParams.set("v",FAST_BUILD);
+ workerPath.searchParams.set("fresh",String(Date.now()));
+ const response=await fetch(workerPath.toString(),{cache:"no-store"});
+ if(!response.ok)throw Error("Voice worker download HTTP "+response.status+
+   ". Audio remains muted.");
+ const source=await response.text();
+ const exactBuild='const WORKER_BUILD="'+FAST_BUILD+'"';
+ if(!source.includes(exactBuild))
+  throw Error("An old worker came from browser/CDN cache. Its 100 KB model restriction was NOT loaded. "+
+    "Use Reload latest engine to refresh this page. Your saved voice is safe.");
+ // One-off Blob URL also prevents Worker() reusing a stale disk cache entry.
+ const blobUrl=URL.createObjectURL(new Blob(
+   [source+"\n//# sourceURL=fast-voice-worker-"+FAST_BUILD+".js"],
+   {type:"application/javascript"}));
+ try{return {worker:new Worker(blobUrl),blobUrl}}
+ catch(error){URL.revokeObjectURL(blobUrl);throw error}
+}
 function info(text,bad=false){
  const el=$("status-text");
  el.textContent=String(text);
@@ -159,9 +182,11 @@ async function stop(message){
  try{app.capture?.disconnect()}catch(_){}
  try{app.gain?.disconnect()}catch(_){}
  try{app.worker?.terminate()}catch(_){}
+ if(app.workerBlobUrl){URL.revokeObjectURL(app.workerBlobUrl);app.workerBlobUrl=null;}
  try{await app.ctx?.close()}catch(_){}
  Object.assign(app,{abort:null,worker:null,ctx:null,stream:null,source:null,capture:null,
-  gain:null,inFlight:false,pending:null,nextPlayTime:0,lastCapture:0});
+  gain:null,inFlight:false,pending:null,nextPlayTime:0,lastCapture:0,
+  workerBlobUrl:null,verifiedWorkerBuild:false});
  $("download").hidden=true;
  toggle();badge("OFF · MUTED");
  if(message)info(message);
@@ -228,8 +253,20 @@ function play(d){
 function eventFromWorker(e,token){
  if(token!==app.token)return;
  const d=e.data||{};
- if(d.type==="stage")info(d.text||"Loading neural ONNX…");
+ if(d.type==="build"){
+   if(d.build!==FAST_BUILD){
+    void stop("Wrong neural worker loaded ("+String(d.build||"unknown")+
+      "); audio remained muted. Click Reload latest engine.");
+    return;
+   }
+   app.verifiedWorkerBuild=true;
+   info("Verified neural worker "+d.build+". Initializing ONNX model…");
+ }else if(d.type==="stage")info(d.text||"Loading neural ONNX…");
  else if(d.type==="ready") {
+  if(!app.verifiedWorkerBuild){
+   void stop("Unverified or stale neural worker refused. Audio stayed muted.");
+   return;
+  }
   badge("MODEL READY");info("Model initialized. Starting microphone…");
   void activateMic(token).catch(err=>{void stop("Microphone failure: "+(err?.message||err)+". Input muted.")});
  }else if(d.type==="audio")play(d);
@@ -292,9 +329,10 @@ async function start(){
   await app.ctx.resume();
   const weights=await getModel();
   if(token!==app.token)return;
-  info("Initializing the streaming AI model in a dedicated browser worker…");
-  const worker=new Worker("./fast-voice-worker.js?v=20261106-tiny-onnx-v3");
-  app.worker=worker;
+  info("Fetching and verifying the newest neural worker directly from the server…");
+  const {worker,blobUrl}=await loadVerifiedWorker();
+  if(token!==app.token){worker.terminate();URL.revokeObjectURL(blobUrl);return}
+  app.worker=worker;app.workerBlobUrl=blobUrl;app.verifiedWorkerBuild=false;
   worker.onmessage=e=>eventFromWorker(e,token);
   worker.onerror=e=>{if(token===app.token)void stop("Neural worker crashed: "+(e.message||"unknown"))};
   worker.postMessage({type:"init",model:weights,historySamples:app.historySamples},[weights]);
@@ -311,6 +349,15 @@ $("volume").addEventListener("input",()=>{
  if(app.gain&&app.ctx)app.gain.gain.setTargetAtTime(Number($("volume").value)/100,app.ctx.currentTime,.015);
 });
 $("start").addEventListener("click",()=>{void start()});
+$("engine-build").textContent="Neural runtime build: "+FAST_BUILD+
+  " · worker fetched cache-free and version-verified";
+$("reload-engine").addEventListener("click",()=>{
+ void stop().then(()=>{
+  const next=new URL("./fast-voice.html",window.location.href);
+  next.searchParams.set("reload",FAST_BUILD+"-"+Date.now());
+  window.location.replace(next.toString());
+ });
+});
 $("stop").addEventListener("click",()=>{void stop("Stopped; mic closed and all converted audio muted.")});
 window.addEventListener("pagehide",()=>{void stop()});
 })();
