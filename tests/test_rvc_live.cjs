@@ -49,7 +49,7 @@ assert.equal(typeof self.onmessage,"function","Worker did not register message h
 assert(workerSource.includes('cv=await session(d.contentVec'),"ContentVec session missing");
 assert(workerSource.includes('pitchModel=await session(d.rmvpe'),"RMVPE session missing");
 assert(workerSource.includes('gen=await session(d.voice'),"RVC generator session missing");
-assert(workerSource.includes('await gen.run(synthesizerFeeds('),"Real voice model inference missing");
+assert(workerSource.includes('await gen.run(feeds)'),"Real voice model inference missing");
 assert(workerSource.includes('await pitchModel.run('),"Real pitch model inference missing");
 assert(workerSource.includes('await cv.run('),"Real content model inference missing");
 assert(!workerSource.includes('speechSynthesis'),"TTS is not voice conversion");
@@ -57,6 +57,7 @@ for(const id of ["rvc-live-start","rvc-live-stop","rvc-live-lag","rvc-live-proce
  assert(html.includes('id="'+id+'"'),"Missing neural RVC UI control "+id);
 }
 assert(html.includes('src="./rvc-live-ui.js'),'Live RVC controller not mounted');
+assert(html.includes('src="./model-presets.js'),"Model auto-download script is not mounted");
 assert(controllerSource.includes('app.worker.postMessage({type:"convert"'),'Audio chunks not routed to actual neural worker');
 assert(!controllerSource.includes('app.source.connect(ctx.destination)'),'Dry mic output route detected');
 assert(!html.includes("<iframe")&&!comparisons.includes("<iframe"),"Hosted iframe is forbidden");
