@@ -110,7 +110,9 @@ def main():
     work.mkdir(parents=True, exist_ok=True)
     temp.mkdir(parents=True, exist_ok=True)
     reference = str(Path(args.reference).resolve())
-    candidates = source_corpus(args.source_dir, args.pairs, work)
+    # Attempt additional candidates so the user receives the requested number
+    # of VALID pairs, not just 400 attempts (which might yield 397 accepted).
+    candidates = source_corpus(args.source_dir, min(1000, args.pairs * 2), work)
     args_teacher = SimpleNamespace(
         source="", target=reference, output=str(temp),
         diffusion_steps=args.teacher_steps, length_adjust=1.0,
@@ -120,8 +122,25 @@ def main():
     # Load the 100+ MB teacher and feature extractors just once.
     preloaded = seed.load_models(args_teacher)
     seed.load_models = lambda _: preloaded
-    results = {"train": 0, "val": 0, "dev": 0, "rejected": 0, "reasons": []}
+    manifest_path = Path(args.output) / "manifest.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    results = {
+        "train": 0, "val": 0, "dev": 0, "rejected": 0, "reasons": [],
+        "requested": args.pairs, "attempted": 0, "accepted_source_indices": [],
+    }
+    if manifest_path.is_file():
+        old = json.loads(manifest_path.read_text())
+        if old.get("requested") == args.pairs and isinstance(old.get("accepted_source_indices"), list):
+            results = old
+            print(f"Resuming accepted pairs: {len(results['accepted_source_indices'])}/{args.pairs}", flush=True)
+        else:
+            raise RuntimeError("Existing dataset manifest belongs to another job or older format; use a new output directory.")
+    already_accepted = set(results["accepted_source_indices"])
     for i, source in enumerate(candidates):
+        if len(results["accepted_source_indices"]) >= args.pairs:
+            break
+        if i in already_accepted:
+            continue
         converted = None
         try:
             args_teacher.source = str(source)
@@ -135,19 +154,32 @@ def main():
             command("ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
                     "-i", outputs[0], "-ac", "1", "-ar", "16000",
                     "-acodec", "pcm_s16le", converted)
-            part = prepare_pair(source, converted, args.output, i)
+            # Use accepted index for exact train/val/dev allocations.
+            accepted_index = len(results["accepted_source_indices"])
+            part = prepare_pair(source, converted, args.output, accepted_index)
             results[part] += 1
+            results["accepted_source_indices"].append(i)
+            # Persist after each successful pair to recover from session loss.
+            manifest_path.write_text(json.dumps(results, indent=2))
         except Exception as e:
             results["rejected"] += 1
-            results["reasons"].append(f"{source.name}: {str(e)[:200]}")
+            if len(results["reasons"]) < 50:
+                results["reasons"].append(f"{source.name}: {str(e)[:200]}")
         finally:
             if converted:
                 converted.unlink(missing_ok=True)
-        if (i+1) % 10 == 0:
-            print(f"Teacher conversion {i+1}/{len(candidates)}; accepted "
-                  f"{sum(results[k] for k in ('train','val','dev'))}; rejected {results['rejected']}",
+        results["attempted"] = i + 1
+        if (i + 1) % 10 == 0 or len(results["accepted_source_indices"]) == args.pairs:
+            print(f"Teacher conversion: {len(results['accepted_source_indices'])}/{args.pairs} accepted; "
+                  f"{i+1} attempted, {results['rejected']} rejected",
                   flush=True)
-    (Path(args.output) / "manifest.json").write_text(json.dumps(results, indent=2))
+            manifest_path.write_text(json.dumps(results, indent=2))
+    manifest_path.write_text(json.dumps(results, indent=2))
+    if len(results["accepted_source_indices"]) < args.pairs:
+        raise RuntimeError(
+            f"Only {len(results['accepted_source_indices'])}/{args.pairs} usable teacher pairs; "
+            f"see {manifest_path} for rejection details"
+        )
     if min(results["train"], results["val"], results["dev"]) < 2:
         raise RuntimeError(f"Insufficient genuine aligned training/validation clips: {results}")
     print("Teacher corpus ready. Training pairs are made from SAME source speech, not two TTS voices.", flush=True)
