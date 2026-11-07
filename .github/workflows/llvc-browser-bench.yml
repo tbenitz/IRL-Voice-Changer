@@ -39,32 +39,31 @@ jobs:
            console.log("TINY VC INPUT NAMES",session.inputNames,
              "metadata",JSON.stringify(session.inputMetadata));
            console.log("TINY VC OUTPUT NAMES",session.outputNames);
-           for(const chunkSize of [1024,2048,4096]){
-            const history=16000,results=[];
-            let last=null;
-            for(let i=0;i<5;i++){
-             const len=history+chunkSize;
-             const input=new Float32Array(len);
-             for(let j=0;j<len;j++)input[j]=0.15*Math.sin(2*Math.PI*220*(j+i*chunkSize)/16000);
-             const feeds={audio_in:new ort.Tensor("float32",input,[1,1,len])};
-             const start=performance.now();
-             const out=await session.run(feeds);
-             const time=performance.now()-start;
-             last=out.audio_out||out[session.outputNames[0]];
-             if(!last?.data?.every(Number.isFinite))throw Error("Nonfinite output");
-             if(last.data.length<len)throw Error("Output too short "+last.data.length);
-             results.push(time);
+           for(const history of [2048,4096,8000,16000]){
+            for(const chunkSize of [2048,4096,8192]){
+             const results=[];
+             let last=null;
+             for(let i=0;i<5;i++){
+              const len=history+chunkSize;
+              const input=new Float32Array(len);
+              for(let j=0;j<len;j++)input[j]=0.15*Math.sin(2*Math.PI*220*(j+i*chunkSize)/16000);
+              const feeds={audio_in:new ort.Tensor("float32",input,[1,1,len])};
+              const start=performance.now();
+              const out=await session.run(feeds);
+              const time=performance.now()-start;
+              last=out.audio_out||out[session.outputNames[0]];
+              if(!last?.data?.every(Number.isFinite))throw Error("Nonfinite output");
+              if(last.data.length<len)throw Error("Output too short "+last.data.length);
+              results.push(time);
+             }
+             const afterWarm=results.slice(1);
+             const avg=afterWarm.reduce((a,b)=>a+b,0)/afterWarm.length;
+             const rtf=avg/(chunkSize/16000*1000);
+             console.log("TINY VC BENCH",JSON.stringify({
+               history,chunkSize,chunkMs:chunkSize/16,inferenceMs:+avg.toFixed(2),
+               rtf:+rtf.toFixed(3),outputSamples:last.data.length
+             }));
             }
-            const afterWarm=results.slice(1);
-            const avg=afterWarm.reduce((a,b)=>a+b,0)/afterWarm.length;
-            const rtf=avg/(chunkSize/16000*1000);
-            console.log("TINY VC BENCH",{
-              chunkSize,chunkMs:chunkSize/16,inferenceMs:+avg.toFixed(2),
-              rtf:+rtf.toFixed(3),
-              firstMs:+results[0].toFixed(1),
-              outputDims:last.dims,
-              peak:Math.max(...last.data.slice(-chunkSize))
-            });
            }
            console.log("PASS: tiny causal neural voice checkpoint runs real conversion in ONNX Runtime Web WASM");
            await session.release();
