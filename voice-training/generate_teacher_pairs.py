@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+"""Generate genuine source/teacher-converted LLVC pairs automatically.
+
+Requires the official Plachtaa/seed-vc repository and a CUDA GPU.
+The only speaker-specific input is one authorized target voice recording.
+No Pocket TTS dual-render pairs are used.
+"""
+import argparse
+import glob
+import json
+import os
+from pathlib import Path
+import random
+import subprocess
+import sys
+from types import SimpleNamespace
+
+import numpy as np
+import soundfile as sf
+
+
+def command(*argv):
+    subprocess.run([str(a) for a in argv], check=True)
+
+
+def source_corpus(source_dir, limit, work):
+    """Use only eligible LibriSpeech recordings, drawing from many speakers."""
+    originals = sorted(Path(source_dir).rglob("*.flac"))
+    originals += sorted(Path(source_dir).rglob("*.wav"))
+    if not originals:
+        raise RuntimeError("Missing source corpus. Download LibriSpeech dev-clean first.")
+    rng = random.Random(42)
+    rng.shuffle(originals)
+    selected = []
+    per_speaker = {}
+    for path in originals:
+        speaker = path.parent.parent.name if path.parent.parent != Path(source_dir) else path.parent.name
+        if per_speaker.get(speaker, 0) >= 20:
+            continue
+        out = Path(work) / f"{len(selected):04d}_original.wav"
+        command("ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                "-i", path, "-ac", "1", "-ar", "16000",
+                "-t", "9", "-acodec", "pcm_s16le", out)
+        audio, rate = sf.read(out, dtype="float32")
+        if rate != 16000 or len(audio) < 2 * 16000:
+            out.unlink(missing_ok=True)
+            continue
+        selected.append(out)
+        per_speaker[speaker] = per_speaker.get(speaker, 0) + 1
+        if len(selected) >= limit:
+            break
+    if len(selected) < 25:
+        raise RuntimeError(f"Only {len(selected)} eligible source clips; need at least 25")
+    return selected
+
+
+def prepare_pair(source, converted, destination, index):
+    """Reject bad timing; DO NOT time-stretch two unrelated recordings."""
+    a, ar = sf.read(source, dtype="float32")
+    b, br = sf.read(converted, dtype="float32")
+    if ar != 16000 or br != 16000:
+        raise ValueError(f"Sample rate mismatch: {ar}/{br}")
+    if a.ndim != 1 or b.ndim != 1:
+        raise ValueError("Expected mono WAVs")
+    if abs(len(a) - len(b)) > int(0.06 * len(a)):
+        raise ValueError(f"Teacher changed clip duration by >6%: {len(a)} / {len(b)}")
+    if len(a) < 32000:
+        raise ValueError("Clip too short")
+    n = min(len(a), len(b))
+    a, b = a[:n], b[:n]
+    if np.sqrt(np.mean(a * a)) < .008 or np.sqrt(np.mean(b * b)) < .008:
+        raise ValueError("Source or teacher was near silent")
+    if np.mean((a-b) ** 2) < 1e-7:
+        raise ValueError("Voice converter produced essentially unchanged audio")
+    # Resample identity is preserved; each converted file is generated from its
+    # *own original*, with the same speech and approximate frame timing.
+    part = "dev" if index % 50 == 0 else "val" if index % 12 == 0 else "train"
+    folder = Path(destination) / part
+    folder.mkdir(parents=True, exist_ok=True)
+    name = f"voice_{index:04d}"
+    sf.write(folder / f"{name}_original.wav", a, 16000, subtype="PCM_16")
+    sf.write(folder / f"{name}_converted.wav", b, 16000, subtype="PCM_16")
+    return part
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--reference", required=True, help="Consented speaker WAV/MP3")
+    p.add_argument("--source-dir", required=True, help="LibriSpeech corpus folder")
+    p.add_argument("--output", required=True, help="LLVC dataset output")
+    p.add_argument("--seed-vc", required=True, help="Official Seed-VC clone path")
+    p.add_argument("--pairs", type=int, default=400)
+    p.add_argument("--teacher-steps", type=int, default=10)
+    args = p.parse_args()
+    if not 25 <= args.pairs <= 1000:
+        p.error("The source count must be 25–1000")
+    if not 4 <= args.teacher_steps <= 50:
+        p.error("Teacher steps must be 4–50")
+    if not Path(args.reference).is_file():
+        p.error("Speaker reference audio missing")
+    os.chdir(args.seed_vc)
+    import torch
+    if not torch.cuda.is_available():
+        raise RuntimeError("Teacher synthesis requires GPU; this job will not pretend CPU training succeeded.")
+    import inference as seed
+    work = Path(args.output).resolve().parent / "source_wavs"
+    temp = Path(args.output).resolve().parent / "teacher_tmp"
+    work.mkdir(parents=True, exist_ok=True)
+    temp.mkdir(parents=True, exist_ok=True)
+    reference = str(Path(args.reference).resolve())
+    candidates = source_corpus(args.source_dir, args.pairs, work)
+    args_teacher = SimpleNamespace(
+        source="", target=reference, output=str(temp),
+        diffusion_steps=args.teacher_steps, length_adjust=1.0,
+        inference_cfg_rate=0.7, f0_condition=False,
+        auto_f0_adjust=False, semi_tone_shift=0,
+        checkpoint=None, config=None, fp16=True)
+    # Load the 100+ MB teacher and feature extractors just once.
+    preloaded = seed.load_models(args_teacher)
+    seed.load_models = lambda _: preloaded
+    results = {"train": 0, "val": 0, "dev": 0, "rejected": 0, "reasons": []}
+    for i, source in enumerate(candidates):
+        converted = None
+        try:
+            args_teacher.source = str(source)
+            for old in temp.glob("*.wav"):
+                old.unlink()
+            seed.main(args_teacher)
+            outputs = list(temp.glob("vc_*.wav"))
+            if len(outputs) != 1:
+                raise ValueError("Teacher did not produce exactly one recording")
+            converted = temp / f"converted_{i:04d}.wav"
+            command("ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                    "-i", outputs[0], "-ac", "1", "-ar", "16000",
+                    "-acodec", "pcm_s16le", converted)
+            part = prepare_pair(source, converted, args.output, i)
+            results[part] += 1
+        except Exception as e:
+            results["rejected"] += 1
+            results["reasons"].append(f"{source.name}: {str(e)[:200]}")
+        finally:
+            if converted:
+                converted.unlink(missing_ok=True)
+        if (i+1) % 10 == 0:
+            print(f"Teacher conversion {i+1}/{len(candidates)}; accepted "
+                  f"{sum(results[k] for k in ('train','val','dev'))}; rejected {results['rejected']}",
+                  flush=True)
+    (Path(args.output) / "manifest.json").write_text(json.dumps(results, indent=2))
+    if min(results["train"], results["val"], results["dev"]) < 2:
+        raise RuntimeError(f"Insufficient genuine aligned training/validation clips: {results}")
+    print("Teacher corpus ready. Training pairs are made from SAME source speech, not two TTS voices.", flush=True)
+
+
+if __name__ == "__main__":
+    main()
