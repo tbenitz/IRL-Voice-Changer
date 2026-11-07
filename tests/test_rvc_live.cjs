@@ -69,7 +69,7 @@ assert(presetSource.includes('irl-rvc-voice-models-v3'),"Must not reuse old Q8 c
 assert(!presetSource.includes('url:HF_BASE+"contentvec_768l12_q8.onnx"'),"ConvInteger Q8 ContentVec still loaded by default");
 assert(!presetSource.includes('url:HF_BASE+"rmvpe_q8.onnx"'),"ConvInteger Q8 RMVPE still loaded by default");
 assert(studioSource.includes("Compatible ContentVec")||studioSource.includes("browser-compatible FP16"),"Missing on-page model compatibility disclosure");
-assert(controllerSource.includes("rvc-stream-worker.js?v=20261106-fp16-v2"),"Streaming worker may be stale");
+assert(controllerSource.includes("rvc-stream-worker.js?v=20261106-features-v3"),"Streaming worker may be stale");
 
 assert(!html.includes("<iframe")&&!comparisons.includes("<iframe"),"Hosted iframe is forbidden");
 console.log("PASS: microphone outputs silence, streams real PCM to RVC worker, persistent ONNX model inference wired, no iframes or TTS substitution.");
