@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import socket
 
 def require(condition, message):
     if not condition:
@@ -64,6 +65,21 @@ def setup(upstream, output, dataset, steps, batch):
     # generator/discriminator checkpoint at the user-chosen update count.
     train = upstream / "train.py"
     original = train.read_text()
+    # KoeAI/LLVC hardcodes MASTER_PORT=12355, which collides with services
+    # already running inside Hugging Face Spaces. Respect a free port
+    # provided by the training orchestrator instead.
+    fixed_port = "os.environ['MASTER_PORT'] = '12355'"
+    fixed_address = "os.environ['MASTER_ADDR'] = 'localhost'"
+    if "IRL_VOICE_DYNAMIC_DDP_PORT" not in original:
+        require(original.count(fixed_port) == 1 and original.count(fixed_address) == 1,
+                "Upstream LLVC distributed startup changed; cannot safely set dynamic port")
+        original = original.replace(
+            fixed_address,
+            "os.environ.setdefault('MASTER_ADDR', '127.0.0.1')"
+        ).replace(
+            fixed_port,
+            "os.environ.setdefault('MASTER_PORT', '12355')  # IRL_VOICE_DYNAMIC_DDP_PORT"
+        )
     if "IRL_VOICE_TRAIN_FINITE_PATCH" not in original:
         require("import fairseq\n" in original,
                 "Official LLVC training source has changed; refusing unsafe patch")
@@ -102,16 +118,27 @@ def setup(upstream, output, dataset, steps, batch):
             "            initial = torch.load(config['pretrained_generator'], map_location='cpu', weights_only=False)\n"
             "            net_g.load_state_dict(initial['model'], strict=True)\n"
             "            del initial\n")
-        train.write_text(original)
+    # Always persist the dynamic-port patch, even if finite-loop patch
+    # was installed during a previous run in the same container.
+    train.write_text(original)
     return config
 
 def train(upstream, output):
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
+    env["MASTER_ADDR"] = "127.0.0.1"
+    # Pick an unused IPv4 TCP port per run rather than LLVC's hard-coded
+    # 12355. Closing the probe socket before mp.spawn avoids a bind conflict.
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    env["MASTER_PORT"] = str(port)
+    print(f"LLVC distributed initialization on localhost:{port}", flush=True)
     result = subprocess.run([sys.executable, "train.py", "-d", str(output)],
                             cwd=upstream, env=env)
     require(result.returncode == 0,
-            f"Full LLVC neural training failed with exit code {result.returncode}")
+            f"Full LLVC neural training failed with exit code {result.returncode}. "
+            f"Saved teacher pairs and any completed checkpoints are preserved.")
 
 def export(upstream, output, steps, name):
     import numpy as np
