@@ -466,26 +466,26 @@ $("trainer-export").addEventListener("click",async()=>{
   const pairs=await D.listPairs();
   if(!pairs.length)throw Error("No generated WAV files yet");
   const manifest={
-   kind:"Pocket synthetic voice dataset, EXPERIMENTAL and NOT phoneme aligned",
+   kind:"Pocket synthetic cloned target speech with optional experimental unaligned pairs",
    sampleRate:16000,channels:1,totalTargetSeconds:S.seconds,
-   issues:["Two independent Pocket outputs of identical text need not have aligned audio.",
+   issues:["The default mode generates only the target voice. An optional second voice does NOT make this teacher-aligned RVC training data.",
     "A compact model trained on these pairs may not reproduce the desired voice.",
     "Clone only speakers who have consented."],
    pairs:pairs.map(p=>({id:p.id,text:p.text,seconds:p.seconds,
-    original:"source/"+p.id+".wav",cloned:"target/"+p.id+".wav"}))
+    original:p.source?"source/"+p.id+".wav":null,cloned:"target/"+p.id+".wav"}))
   };
   const entries=[{name:"manifest.json",blob:new Blob([JSON.stringify(manifest,null,2)],{type:"application/json"})}];
   for(const p of pairs){
-   entries.push({name:"source/"+p.id+".wav",blob:p.source});
+   if(p.source)entries.push({name:"source/"+p.id+".wav",blob:p.source});
    entries.push({name:"target/"+p.id+".wav",blob:p.target});
   }
-  notice("Building ZIP from "+pairs.length+" saved, real Pocket speech pairs…");
+  notice("Building ZIP from "+pairs.length+" saved real Pocket speech recordings…");
   const archive=await D.buildZip(entries,(i,n)=>{
    if(i%20===0||i===n)notice("Packing dataset WAV files "+i+"/"+n);
   });
   download(archive,"pocket-synthetic-paired-"+Math.round(S.seconds)+"s.zip");
   notice("ZIP exported ("+(archive.size/1e6).toFixed(1)+" MB), "+
-   pairs.length+" speech pairs, "+clock(S.seconds)+" target voice.");
+   pairs.length+" cloned recordings, "+clock(S.seconds)+" target voice.");
  }catch(e){notice("ZIP export failed: "+e.message,true)}
  finally{render()}
 });
@@ -493,12 +493,13 @@ $("trainer-reset").addEventListener("click",async()=>{
  if(S.running||S.training)return;
  if(!confirm("Delete this project's saved synthetic speech pairs and experimental ONNX? Your saved Pocket voice references are kept."))return;
  try{
-  await D.clearPairs();Object.assign(S,{cursor:0,seconds:0,pairs:0,hash:null});
+  await D.clearPairs();Object.assign(S,{cursor:0,seconds:0,pairs:0,paired:0,hash:null});
   await refresh();notice("New voice project created; previously saved Pocket voices were not changed.");
  }catch(e){notice("Project reset failed: "+e.message,true)}
 });
 $("trainer-train").addEventListener("click",async()=>{
  if(S.running||S.training)return;
+ if(S.paired<4){trainNotice("Experimental two-voice research training needs four or more paired recordings. One-voice cloned speech cannot train this converter.",true);return}
  if(!$("trainer-consent").checked){trainNotice("Confirm consent before training.",true);return}
  S.training=true;S.cancelTraining=false;render();
  try{
