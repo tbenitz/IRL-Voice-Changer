@@ -293,7 +293,7 @@ async function start(){
   const weights=await getModel();
   if(token!==app.token)return;
   info("Initializing the streaming AI model in a dedicated browser worker…");
-  const worker=new Worker("./fast-voice-worker.js?v=20261106-f1");
+  const worker=new Worker("./fast-voice-worker.js?v=20261106-tiny-onnx-v3");
   app.worker=worker;
   worker.onmessage=e=>eventFromWorker(e,token);
   worker.onerror=e=>{if(token===app.token)void stop("Neural worker crashed: "+(e.message||"unknown"))};
