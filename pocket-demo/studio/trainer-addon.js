@@ -11,6 +11,7 @@ if(!anchor)throw Error("Missing Pocket model panel");
 const css=document.createElement("style");
 css.textContent=[
  "#pocket-trainer{margin:25px 0;padding:23px;border:1px solid #357c81;border-radius:16px;background:linear-gradient(140deg,#102737,#121b2b);color:#eefbff;font:14px/1.55 system-ui,sans-serif}",
+ "#pocket-trainer [hidden]{display:none!important}",
  "#pocket-trainer *{box-sizing:border-box}#pocket-trainer h3{font-size:clamp(23px,3vw,30px);margin:5px 0 8px}",
  "#pocket-trainer p{color:#b9d1d8;margin:5px 0 14px}#pocket-trainer .ey{font-size:11px;letter-spacing:.14em;color:#64e3d6;font-weight:900;text-transform:uppercase}",
  "#pocket-trainer .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;margin:17px 0}",
@@ -36,7 +37,7 @@ panel.id="pocket-trainer";
 panel.innerHTML=[
  '<span class="ey">Pocket TTS • Synthetic voice recordings • On-device research</span>',
  '<h3>Custom Voice Training Lab</h3>',
- '<p><b>Select a target custom voice below</b> from My Voices, or record/upload a new one below. Then click Generate: Pocket synthesizes only the target voice silently by default; optional research pairs use two voices. <b>You do not need to generate a preview, WAV or MP3 first.</b> Output audio is stored automatically.</p>',
+ '<p><b>Select a built-in Pocket voice or one of your saved custom voices.</b> An upload is only needed for a new custom voice. Then click Generate: Pocket synthesizes only the target voice silently by default; optional research pairs use two voices. <b>You do not need to generate a preview, WAV or MP3 first.</b> Output audio is stored automatically.</p>',
  '<div class="notice"><b>Important:</b> 30 minutes of Pocket-generated speech is not 30 minutes of real or time-aligned RVC teacher conversions. Local WebGPU training here is a <b>genuine but experimental waveform adapter</b>. Its ONNX export is real, but voice identity and naturalness are unverified and may be poor.</div>',
  '<div class="grid">',
  '<label>Recording mode<select id="trainer-mode"><option value="target-only" selected>My cloned voice only (recommended)</option><option value="paired-experimental">Experimental two-voice training pairs</option></select></label>',
