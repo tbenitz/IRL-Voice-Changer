@@ -126,6 +126,7 @@ function render(){
  $("trainer-stop-training").disabled=!S.training;
  $("trainer-export").disabled=busy||!S.pairs;
  $("trainer-reset").disabled=busy;
+ $("trainer-import-teacher").disabled=busy;
  $("trainer-goal").disabled=busy;$("trainer-mode").disabled=busy;$("trainer-source").disabled=busy;
  $("trainer-target").disabled=busy;$("trainer-refresh-voices").disabled=busy;
  $("trainer-count").textContent=clock(S.seconds)+" / "+clock(S.goal);
@@ -525,6 +526,56 @@ $("trainer-reset").addEventListener("click",async()=>{
   await D.clearPairs();Object.assign(S,{cursor:0,seconds:0,pairs:0,paired:0,aligned:0,hash:null});
   await refresh();notice("New voice project created; previously saved Pocket voices were not changed.");
  }catch(e){notice("Project reset failed: "+e.message,true)}
+});
+$("trainer-import-teacher").addEventListener("click",async()=>{
+ if(S.running||S.training)return;
+ if(!$("trainer-consent").checked){
+  $("trainer-teacher-status").textContent="Please confirm permission to process the target voice first.";return;
+ }
+ const selected=$("trainer-teacher-files").files;
+ if(!selected?.length){
+  $("trainer-teacher-status").textContent="Select matching *_original.wav and *_converted.wav files first.";return;
+ }
+ const helper=window.PocketTeacherPairs;
+ if(!helper){
+  $("trainer-teacher-status").textContent="Aligned-teacher importer failed to load. Reload the latest studio.";return;
+ }
+ const button=$("trainer-import-teacher");button.disabled=true;
+ const status=$("trainer-teacher-status");
+ try{
+  const existing=await D.listPairs();
+  if(existing.some(p=>p.mode!=="teacher-parallel"))
+   throw Error("This browser project already has Pocket synthetic speech. Export that ZIP and click Start a new voice project before importing teacher pairs. Nothing has been deleted.");
+  const groups=helper.groupFiles(selected);
+  if(groups.length>2000)throw Error("Import up to 2,000 teacher WAV pairs per batch");
+  status.textContent="Checking "+groups.length+" matched teacher source/converted speech pairs locally…";
+  const prepared=await helper.prepareFiles(selected,D.decodeWav,pcm=>D.wav(pcm));
+  const oldIds=new Set(existing.map(p=>p.id));
+  let count=0,added=0;
+  for(const pair of prepared){
+   const id="teacher-"+pair.id.toLowerCase().replace(/[^a-z0-9_-]/g,"_");
+   if(oldIds.has(id))continue;
+   const record={
+    id,index:existing.length+added,text:"Recorded speech converted by trained target-voice teacher: "+pair.id,
+    seconds:pair.seconds,source:pair.source,target:pair.target,
+    mode:"teacher-parallel",sourceVoice:"recorded-original",
+    targetVoice:"imported-RVC-teacher",reference:"teacher-parallel-v1",
+    alignment:"User-supplied original and teacher-converted versions of SAME recording; checked duration only, not phoneme identity",
+    createdAt:new Date().toISOString()
+   };
+   await D.savePair(record);added++;
+   status.textContent="Imported "+(++count)+" / "+prepared.length+" pairs; "+added+" new teacher recordings.";
+  }
+  const all=await D.listPairs();
+  await D.putMeta("progress",{cursor:all.length,hash:"teacher-parallel-v1",mode:"teacher-parallel",
+   source:"user-imported-trained-VC-teacher"});
+  await refresh();
+  status.textContent="Saved "+added+" new teacher-aligned pairs ("+S.aligned+" total). "+
+   "These must have come from converting each ORIGINAL with a trained target-voice model. "+
+   "Duration and data integrity were checked, NOT speaker identity. "+
+   "The existing small student remains EXPERIMENTAL and is not a 13 MB LLVC.";
+ }catch(e){status.textContent="Teacher WAV import stopped: "+e.message}
+ finally{button.disabled=false;$("trainer-teacher-files").value="";}
 });
 $("trainer-train").addEventListener("click",async()=>{
  if(S.running||S.training)return;
