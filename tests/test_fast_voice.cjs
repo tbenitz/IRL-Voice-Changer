@@ -147,6 +147,12 @@ vm.runInNewContext(source,context);
  assert(control.includes("requireVoiceChange:true"),
    "Live controller must enforce no-passthrough protection for saved/manual ONNX models");
   assert(html.includes('id="rtf"'),"Real-time speed diagnostics missing");
+ assert(html.includes('id="auto-level"')&&html.includes("Auto-match neural speech loudness"),
+   "Auto loudness matching must be clearly labeled as playback processing only");
+ assert(control.includes('rawIn/rawOut')&&control.includes('Math.min(3,rawIn/rawOut)'),
+   "Output-only level matching must compensate quiet neural audio with a capped factor");
+ assert(!control.includes("app.source.connect(app.gain)"),
+   "Auto-level must never mix raw microphone into the neural output");
  assert(html.includes('id="pitch-finish"')&&html.includes('after neural ONNX'),
   "Pitch finish must be described as separate post-neural DSP");
  assert(html.includes('id="wave-change"')&&html.includes('id="wave-corr"'),
