@@ -24,9 +24,9 @@ function tensor(name,dims,data){
  raw.set(new Uint8Array(data.buffer,data.byteOffset,data.byteLength));
  return child(5,[...dims.map(x=>vi(1,x)),vi(2,1),txt(8,name),bytes(9,raw)]);
 }
-function attrPads(left){return child(5,[txt(1,"pads"),vi(8,left),vi(8,0),vi(20,7)])}
-function node(type,ins,outs,pads=null){
- return child(1,[...ins.map(x=>txt(1,x)),...outs.map(x=>txt(2,x)),txt(4,type),...(pads===null?[]:[attrPads(pads)])]);
+function attrInts(name,values){return child(5,[txt(1,name),...values.map(v=>vi(8,v)),vi(20,7)])}
+function node(type,ins,outs,pads=null,dilation=1){
+ return child(1,[...ins.map(x=>txt(1,x)),...outs.map(x=>txt(2,x)),txt(4,type),...(pads===null?[]:[attrInts("pads",[pads,0]),attrInts("dilations",[dilation])])]);
 }
 function convWeights(w){
  // TFJS Conv1D kernel [kernel, input_ch, output_ch] to ONNX
@@ -40,7 +40,7 @@ function convWeights(w){
 }
 async function exportCausalOnnx(tfModel,metadata={}){
  const weights=[];
- for(let i=1;i<=3;i++){
+ for(let i=1;i<=4;i++){
   const layer=tfModel.getLayer("pocket_conv"+i);
   if(!layer)throw Error("Training model is missing pocket_conv"+i);
   const raw=layer.getWeights();
@@ -52,12 +52,14 @@ async function exportCausalOnnx(tfModel,metadata={}){
  }
  const g=[txt(2,"pocket-streaming-timbre-experiment")];
  const graphNodes=[
-  node("Conv",["audio_in","W1","B1"],["c1"],weights[0].kernel.k-1),
+  node("Conv",["audio_in","W1","B1"],["c1"],(weights[0].kernel.k-1)*1,1),
   node("Tanh",["c1"],["a1"]),
-  node("Conv",["a1","W2","B2"],["c2"],weights[1].kernel.k-1),
+  node("Conv",["a1","W2","B2"],["c2"],(weights[1].kernel.k-1)*4,4),
   node("Tanh",["c2"],["a2"]),
-  node("Conv",["a2","W3","B3"],["c3"],0),
-  node("Add",["c3","audio_in"],["residual"]),
+  node("Conv",["a2","W3","B3"],["c3"],(weights[2].kernel.k-1)*16,16),
+  node("Tanh",["c3"],["a3"]),
+  node("Conv",["a3","W4","B4"],["c4"],0),
+  node("Add",["c4","audio_in"],["residual"]),
   node("Tanh",["residual"],["audio_out"])
  ];
  g.push(...graphNodes);
