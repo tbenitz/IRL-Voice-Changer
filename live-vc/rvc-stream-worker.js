@@ -43,6 +43,40 @@ function downsample(x,rate){
  }
  return y;
 }
+function expectedPhoneDim(){
+ const meta=gen?.inputMetadata?.phone;
+ const dims=meta?.dimensions||meta?.dims||[];
+ const n=Number(dims[2]);
+ // RVC v2 uses 768-D; RVC v1 uses 256-D. Never invent 768 dimensions
+ // by repeating or padding 256-D features from a mismatched model.
+ return [256,768].includes(n)?n:768;
+}
+function contentVecTensorToFeatures(output,expectedDim){
+ if(!output||output.dims?.length!==3||output.dims[0]!==1)
+  throw Error("ContentVec output must be [1,frames,channels] or [1,channels,frames]; got "+
+    (output?.dims?.join("x")||"no tensor"));
+ const [batch,d1,d2]=output.dims;
+ const length=output.data?.length||0;
+ if(length!==batch*d1*d2)throw Error("ContentVec output has mismatched tensor dimensions");
+ // IMPORTANT: inspect the *voice generator's* phone width before choosing axes.
+ // The old code checked d1===256 before d2===768, so [1,256,768]
+ // was incorrectly interpreted as 256-D even for a genuine 768-D export.
+ let frames,dim=expectedDim,features,layout;
+ if(d2===dim){
+  frames=d1;layout="time-major";
+  features=Float32Array.from(output.data);
+ }else if(d1===dim){
+  frames=d2;layout="channel-major";
+  features=new Float32Array(frames*dim);
+  for(let f=0;f<frames;f++)
+   for(let c=0;c<dim;c++)
+    features[f*dim+c]=Number(output.data[c*frames+f]);
+ }else throw Error("ContentVec output "+output.dims.join("x")+
+  " has no "+dim+"-dimensional feature axis required by the selected RVC generator");
+ if(!frames||frames>50000)throw Error("ContentVec returned an invalid frame count "+frames);
+ if(features.some(v=>!Number.isFinite(v)))throw Error("ContentVec output contained non-finite features");
+ return {features,frames,dim,layout};
+}
 async function contentVec(audio){
  const names=cv.inputNames,feeds={};
  for(const name of names){
@@ -56,19 +90,26 @@ async function contentVec(audio){
   else if(name==="output_layer")feeds[name]=tensor("int64",new BigInt64Array([12n]),[1]);
   else throw Error("Unsupported ContentVec input "+name);
  }
- const result=await cv.run(feeds);
- const output=result[cv.outputNames[0]];
- if(output?.dims.length!==3)throw Error("Unexpected ContentVec shape: "+output?.dims);
- const [b,d1,d2]=output.dims;
- if(b!==1)throw Error("ContentVec batch size must be 1");
- let frames,dim,features;
- if(d1===768||d1===256){
-  frames=d2;dim=d1;features=new Float32Array(frames*dim);
-  for(let f=0;f<frames;f++)for(let c=0;c<dim;c++)features[f*dim+c]=Number(output.data[c*frames+f]);
- }else if(d2===768||d2===256){
-  frames=d1;dim=d2;features=Float32Array.from(output.data);
- }else throw Error("Unrecognized ContentVec dimensions "+output.dims);
- if(dim!==768)throw Error("Only RVC v2 ContentVec-768 is supported");
+ const results=await cv.run(feeds);
+ const dim=expectedPhoneDim();
+ let chosen=null,details=[];
+ // Some exports provide several outputs. Prefer an actual 768-D feature
+ // tensor rather than accidentally using a 256-D final projection.
+ for(const name of cv.outputNames){
+  const output=results[name];
+  details.push(name+":"+(output?.dims?.join("x")||"none"));
+  if(output?.dims?.length!==3)continue;
+  const d=output.dims;
+  if(d[0]!==1||!(d[1]===dim||d[2]===dim))continue;
+  chosen={name,...contentVecTensorToFeatures(output,dim)};
+  break;
+ }
+ if(!chosen)throw Error("ContentVec features incompatible with RVC v2: need "+
+   dim+" channels; ONNX outputs are ["+details.join(", ")+
+   "]. This is a model/export mismatch, not a microphone problem.");
+ tell("stage",{text:"ContentVec "+chosen.name+" "+chosen.frames+" frames × "+chosen.dim+
+   " channels ("+chosen.layout+")."});
+ const {features,frames}=chosen;
  const doubled=new Float32Array(frames*2*dim);
  for(let f=0;f<frames*2;f++){
   const left=Math.floor(f/2),right=Math.min(frames-1,left+1),t=f%2*.5;
