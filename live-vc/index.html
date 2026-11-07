@@ -149,12 +149,13 @@ h3{font-size:15px;margin:0 0 9px}
     <div class="actions">
       <button type="button" class="secondary" id="get-core">Download quantized ContentVec + RMVPE (~194 MB)</button>
       <label style="font-size:12px;color:var(--muted)">Pitch <select id="rvc-shift" style="background:#162e43;color:var(--txt);border:1px solid #3a5a6d;border-radius:9px;padding:10px"><option value="0">0 semitones</option><option value="-5">−5 semitones</option><option value="5">+5 semitones</option><option value="-12">−12 semitones</option><option value="12">+12 semitones</option></select></label>
-      <button class="primary" type="button" id="rvc-run">Convert with real RVC</button>
+      <button class="primary" type="button" id="rvc-run">Test selected voice (first 3 sec)</button>
+      <button class="secondary" type="button" id="rvc-cancel" disabled>Cancel test</button>
     </div>
     <progress id="rvc-progress" value="0" max="100" hidden></progress>
     <div id="rvc-status" role="status" aria-live="polite">Choose a built-in voice or upload your own ONNX generator. The same downloaded base models can also be used for a separate recorded-audio test.</div>
     <audio controls id="rvc-output" hidden></audio><a id="rvc-save" hidden download="irl-rvc-converted.wav">Download converted WAV</a>
-    <div class="notice">The model files must be real and compatible. Model downloads and JavaScript libraries need internet once; inference runs locally. On an 8 GB Chromebook the three-model RVC pipeline may run slowly, exhaust memory, or fail. If that happens the page reports the error without pretending that a pitch-shifted file was neural RVC.</div>
+    <div class="notice">The built-in voices and base models can download automatically when you press Test or Start. The test converts the first 3 seconds of your uploaded speech; this is real model inference, not a recording creator. Model downloads need internet once; inference runs locally. On an 8 GB Chromebook the three-model RVC pipeline may run slowly, exhaust memory, or fail. If that happens the page reports the error without pretending that a pitch-shifted file was neural RVC.</div>
   </section>
   <p class="footer">IRL Voice Changer · tbenitz. Live mode: on-device Web Audio DSP. RVC lab: <a href="https://github.com/moyue23/rvc-web-runtime">moyue23/rvc-web-runtime</a> (MIT), RVC supporting models carry their own licenses. Use voice models with appropriate rights and consent. <a href="../">Project home</a></p>
 </main>
@@ -331,41 +332,11 @@ async function pcm16k(file) {
   return new Float32Array(resampled.getChannelData(0));
  }finally{await ctx.close().catch(()=>{})}
 }
-$("rvc-run").addEventListener("click",async()=>{
- if(RUNTIME.busy)return;
- const voice=$("rvc-model").files?.[0],audio=$("rvc-audio").files?.[0];
- const contentVec=$("rvc-vec").files?.[0]||RUNTIME.vec;
- const rmvpe=$("rvc-pitch").files?.[0]||RUNTIME.pitch;
- if(!voice||!audio||!contentVec||!rmvpe){note("Missing RVC voice ONNX, source audio, ContentVec, or RMVPE. All four are required for real model inference.",true);return}
- if(!voice.name.toLowerCase().endsWith(".onnx")){note("Only compatible RVC v2 ONNX generator files are supported here. An MP3 is not a trained model.",true);return}
- RUNTIME.busy=true;$("rvc-run").disabled=true;$("get-core").disabled=true;
- $("rvc-output").hidden=true;$("rvc-save").hidden=true;$("rvc-progress").hidden=false;$("rvc-progress").value=0;
- const stages={input_preparation:4,model_parsing:13,feature_extraction:26,pitch_estimation:42,voice_synthesis:55,post_processing:90,success:100,failed:100};
- try{
-  if(!(navigator.gpu||WebAssembly))throw Error("Neither WebGPU nor WebAssembly is available");
-  note("Decoding and resampling the source to 16 kHz…");
-  const src=await pcm16k(audio);
-  note("Loading actual RVC-Web-Runtime neural inference library…");
-  const api=await import("https://esm.sh/rvc-web-runtime@1.0.5?bundle");
-  if(!api.createRVC||!api.runPipelineInWorker)throw Error("RVC runtime package did not export its inference API.");
-  const rvc=api.createRVC();
-  const output=await api.runPipelineInWorker(rvc,{model:voice,contentVec,rmvpe},src,16000,{
-   onEvent(event){
-    if(event.type==="stage"){$("rvc-progress").value=stages[event.stage]||0;note("Real RVC inference: "+event.stage);}
-    else if(event.type==="chunk")note("Real RVC synthesis: chunk "+event.current+"/"+event.total);
-   }
-  },{speakerId:0,pitchShift:Number($("rvc-shift").value),contentVecBackend:"wasm",rmvpeBackend:"wasm",rvcBackend:"wasm",timeout:300000});
-  if(output.state!=="success"||!output.outputWav)throw Error(output.errorMessage||"RVC did not return a converted WAV.");
-  const url=URL.createObjectURL(output.outputWav);
-  if($("rvc-output").dataset.url)URL.revokeObjectURL($("rvc-output").dataset.url);
-  $("rvc-output").src=url;$("rvc-output").dataset.url=url;$("rvc-output").hidden=false;
-  $("rvc-save").href=url;$("rvc-save").hidden=false;
-  $("rvc-progress").value=100;note("RVC conversion completed with the real ONNX model. Listen to or download the converted audio.");
- }catch(e){note("RVC failed — no synthetic or DSP substitution made. "+(e?.message||e),true)}
- finally{RUNTIME.busy=false;$("rvc-run").disabled=false;$("get-core").disabled=false}
-});
+// RVC recording conversion now uses the same persistent real ONNX worker as the live mic.
+
 })();
 </script>
 <script defer src="./model-presets.js?v=20261106-auto1"></script>
+<script defer src="./rvc-clip-ui.js?v=20261106-clip1"></script>
 <script defer src="./rvc-live-ui.js?v=20261106-auto1"></script>
 </body></html>
