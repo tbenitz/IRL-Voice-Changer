@@ -49,5 +49,7 @@ jobs:
           assert '.onnx' in src
           print("One-click notebook and orchestrator source valid (GPU run not executed)")
           PY
+      - name: Regression tests (small-report ZIP, progress counters, lazy source clips)
+        run: python voice-training/tests/test_smoke.py
       - name: Check studio entry script
         run: node --check pocket-demo/studio/full-voice-builder.js
