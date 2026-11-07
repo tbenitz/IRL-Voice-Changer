@@ -79,7 +79,7 @@ progress{width:100%;height:13px;accent-color:var(--mint)}
         <option value="8000">500 ms · slower; auto-reduces if overloaded</option>
         <option value="16000">1000 ms · CPU-heavy; auto-reduces if overloaded</option>
       </select>
-      <small>500–1,000 ms previous context may overload a Chromebook and cause dropped words. The app now automatically shortens context without deleting the audio history; if inference still cannot keep up, it mutes with an explicit error instead of playing chopped speech. The existing 256 ms default is retained.</small>
+      <small>500–1,000 ms previous context can be too slow on a Chromebook. Before switching on the microphone, the engine now measures ONNX speed using synthetic audio and automatically steps down to a sustainable history size. If even the shortest history is too slow, it reports that before capturing speech. The unchanged 256 ms default is still available.</small>
     </label>
   </div>
   <label class="field">Converted output level <span id="volume-value">80%</span>
@@ -88,9 +88,9 @@ progress{width:100%;height:13px;accent-color:var(--mint)}
   <div class="actions"><button id="start" class="primary">Start real-time AI mic</button><button id="stop" class="secondary" disabled>Stop and mute</button><button id="reload-engine" class="secondary" type="button">Reload latest engine</button></div>
   <progress id="download" max="100" value="0" hidden></progress>
   <p class="fine" id="download-status">Model downloads once on first use and is cached when Chrome storage permits. No microphone audio leaves your device.</p>
-  <p class="fine" id="engine-build">Neural runtime build: 20261107-custom-training-fix-v11 · verified worker startup</p>
+  <p class="fine" id="engine-build">Neural runtime build: 20261107-context-preflight-v12 · verified worker startup</p>
   <div id="status-text" role="status" aria-live="polite">Ready. The microphone is off, original audio is muted, and no AI model is running.</div>
-  <div class="notice">Wear headphones. If the model cannot process every speech chunk fast enough, the app will shorten previous-audio context and finally stop rather than skip entire words. A 65 KB ONNX file that loads successfully is NOT automatically a trained custom voice. The original microphone is never automatically sent to speakers.</div>
+  <div class="notice">Wear headphones. For 500/1,000 ms history, the app now checks model speed before enabling the microphone, then reduces context if necessary. If live inference still falls behind, audio is muted rather than letting the original microphone pass through. A 65 KB ONNX file that loads successfully is NOT automatically a trained custom voice. The original microphone is never automatically sent to speakers.</div>
 </section>
 <section class="panel">
   <span class="eyebrow">Measured on your device</span><h2>Neural performance</h2>
@@ -129,5 +129,5 @@ progress{width:100%;height:13px;accent-color:var(--mint)}
 </div>
 <footer>IRL Voice Changer • Pure client-side AudioWorklet and ONNX Runtime Web WASM • Your audio is not uploaded • <a href="./">Other modes</a></footer>
 </main>
-<script defer src="./fast-voice.js?v=20261107-custom-training-fix-v11"></script>
+<script defer src="./fast-voice.js?v=20261107-context-preflight-v12"></script>
 </body></html>
