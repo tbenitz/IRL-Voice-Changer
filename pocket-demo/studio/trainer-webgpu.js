@@ -1,4 +1,4 @@
-/* Browser WebGPU student trainer. This trains a genuine *small* causal
+/* Browser WebGPU student trainer. This trains a genuine *small* bounded-lookahead
  * waveform-to-waveform convolutional model on locally stored speech pairs.
  * IMPORTANT: two Pocket TTS renditions of the same text are not a properly
  * aligned RVC distillation dataset. The resulting voice match is exploratory.
@@ -45,14 +45,16 @@ async function setupTF(progress,allowCPU){
  progress("Using CPU fallback; training is still local but substantially slower than GPU.");
  return {tf:root.tf,backend:"cpu"};
 }
+// TFJS 4.22 does not implement Conv1D CAUSAL padding. SAME uses bounded
+// future lookahead (<=96 samples / 6 ms) and is supported for gradients.
 function createModel(tf){
  const input=tf.input({shape:[null,1],name:"training_audio"});
  let x=tf.layers.conv1d({filters:16,kernelSize:13,dilationRate:1,
-  padding:"causal",activation:"tanh",name:"pocket_conv1"}).apply(input);
+  padding:"same",activation:"tanh",name:"pocket_conv1"}).apply(input);
  x=tf.layers.conv1d({filters:16,kernelSize:13,dilationRate:4,
-  padding:"causal",activation:"tanh",name:"pocket_conv2"}).apply(x);
+  padding:"same",activation:"tanh",name:"pocket_conv2"}).apply(x);
  x=tf.layers.conv1d({filters:16,kernelSize:13,dilationRate:16,
-  padding:"causal",activation:"tanh",name:"pocket_conv3"}).apply(x);
+  padding:"same",activation:"tanh",name:"pocket_conv3"}).apply(x);
  x=tf.layers.conv1d({filters:1,kernelSize:1,
   padding:"same",activation:"linear",name:"pocket_conv4",
   kernelInitializer:"zeros",biasInitializer:"zeros"}).apply(x);
