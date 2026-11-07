@@ -1,5 +1,21 @@
 # IRL Voice Changer
 
+
+## Pocket custom voice → synthetic speech dataset → local experimental student ONNX
+
+**[Open the Custom Voice Training Lab](https://tbenitz.github.io/IRL-Voice-Changer/pocket-demo/studio/#pocket-trainer)** in the existing Pocket Studio. It uses the real on-device Pocket ONNX model, not a remote TTS API or fabricated audio.
+
+1. **Load Pocket** (~200 MB) and record/upload a clean, consented 5–10-second speaker sample using the existing **Voice Clone** panel. Wait until the app confirms **Voice cloned**.
+2. **Generate recordings**: select 1, 5, 10, or 30 minutes of *actual cloned Pocket synthetic speech*. Each diverse sentence is also synthesized in a default Pocket voice. Paired 16 kHz WAV files and transcript are saved to IndexedDB **after each successful pair**, so generation can be stopped and resumed.
+3. **Download WAV dataset ZIP** (sources, cloned targets, and manifest.json) at any point. Browser storage can be deleted by Chrome cleanup, so export an archival copy.
+4. **Optional experimental WebGPU student**: train a small trainable TensorFlow.js 4.22 waveform adapter on the saved pairs. WebGPU is attempted first; if it does not support the required gradient kernels, the app can restart local training using the much slower CPU backend. On an 8 GB Chromebook, refresh the tab after dataset generation (without loading Pocket) to free memory before training.
+5. **Real ONNX export**: JavaScript directly serializes the **learned** 4-layer convolution weights to ONNX (audio_in → audio_out), verifies the exported graph with ONNX Runtime Web WASM against TensorFlow.js outputs, then caches the validated model locally and enables download. In the [Fast Neural voice changer](https://tbenitz.github.io/IRL-Voice-Changer/live-vc/fast-voice.html), choose **My saved experimental ONNX** to load it.
+
+**Critical scientific limitation:** this is an *experimental timbre adapter*, **not a demonstrated speaker-identity clone**. Pocket TTS creates independent utterances with different phoneme timing and phase; coarse duration-aligned synthetic pairs **are not proper LLVC/RVC knowledge-distillation pairs**. Merely synthesizing 30 minutes from a 3–10-second reference will not create 30 minutes of real recorded speaker diversity. The resulting model may preserve more of the original voice than the desired one, sound poor, or fail to meet real-time latency goals. A high-quality custom streaming voice still generally needs aligned source/target pairs created by a real voice-conversion teacher processing the same source audio and more extensive training. WebGPU gradient compatibility and voice sound quality have not been end-to-end verified on the user's Chromebook.
+
+**What is verified:** automated CI runs real TensorFlow.js gradient steps (CPU), exports learned weights into ONNX, verifies it with the Python ONNX checker, and runs ONNX Runtime Web WASM inference with numerical parity against TensorFlow.js. The generated WAV/ZIP format is verified too. This does **not** prove browser WebGPU compatibility, Pocket dataset generation on a particular device, or speaker similarity.
+
+
 **Actual live Chromebook microphone processing:** https://tbenitz.github.io/IRL-Voice-Changer/live-vc/  
 **Real ONNX RVC recording conversion (experimental):** https://tbenitz.github.io/IRL-Voice-Changer/live-vc/#rvc  
 **Local testing choices (no embedded hosted demos):** https://tbenitz.github.io/IRL-Voice-Changer/online-test/
