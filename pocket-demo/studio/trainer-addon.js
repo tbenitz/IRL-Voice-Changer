@@ -36,11 +36,12 @@ panel.id="pocket-trainer";
 panel.innerHTML=[
  '<span class="ey">Pocket TTS • Synthetic voice recordings • On-device research</span>',
  '<h3>Custom Voice Training Lab</h3>',
- '<p>Record or upload a short voice in the Pocket <b>Voice Clone</b> section below. This tool then generates a longer speech dataset in that voice, saves every pair locally and offers downloadable 16 kHz WAV files.</p>',
+ '<p><b>Select a target custom voice below</b> from My Voices, or record/upload a new one below. Then click Generate: the trainer itself synthesizes the paired recordings. <b>You do not need to generate a preview, WAV or MP3 first.</b> Output audio is stored automatically.</p>',
  '<div class="notice"><b>Important:</b> 30 minutes of Pocket-generated speech is not 30 minutes of real or time-aligned RVC teacher conversions. Local WebGPU training here is a <b>genuine but experimental waveform adapter</b>. Its ONNX export is real, but voice identity and naturalness are unverified and may be poor.</div>',
  '<div class="grid">',
  '<label>Target synthetic audio length<select id="trainer-goal"><option value="60">1 minute • test</option><option value="300">5 minutes</option><option value="600">10 minutes</option><option value="1800" selected>30 minutes</option></select></label>',
- '<label>Original Pocket comparison voice<select id="trainer-source"><option value="">Load Pocket to choose voices</option></select></label>',
+ '<label>Target voice — who should the model sound like?<select id="trainer-target"><option value="current">Current uploaded/recorded Pocket clone</option></select></label>',
+  '<label>Source voice — the input speaker for pairs<select id="trainer-source"><option value="">Load Pocket to choose voices</option></select></label>',
  '<label>Local training updates<select id="trainer-steps"><option value="25">25 • smoke test</option><option value="120" selected>120 • quick</option><option value="500">500 • extended</option><option value="1500">1,500 • experimental</option></select></label>',
  '</div>',
  '<span class="count" id="trainer-count">0:00 / 30:00</span> <small id="trainer-pairs">0 saved speech pairs</small>',
@@ -48,9 +49,10 @@ panel.innerHTML=[
  '<label class="check"><input type="checkbox" id="trainer-consent"><span>I am using my own voice or a voice I have explicit permission to clone and train.</span></label>',
  '<div class="actions"><button id="trainer-generate" class="primary">Generate 30 minutes with Pocket</button>',
  '<button id="trainer-stop" disabled>Stop; keep saved pairs</button>',
+  '<button id="trainer-refresh-voices" type="button">↻ Refresh My Voices</button>',
  '<button id="trainer-export">Download paired WAV dataset ZIP</button>',
  '<button id="trainer-reset">Start a new voice project</button></div>',
- '<div id="trainer-status" class="status" role="status" aria-live="polite">Load Pocket above, clone a voice below and click Generate.</div>',
+ '<div id="trainer-status" class="status" role="status" aria-live="polite">Choose a saved target voice (or the current recording), load the Pocket model, then generate pairs directly. No MP3 or manual preview is needed.</div>',
  '<div class="sub"><span class="ey">WebGPU neural student • Automatic ONNX</span>',
  '<h3 style="font-size:22px">Train locally and export a model</h3>',
  '<p>For lower memory use on an 8 GB Chromebook, you can refresh this page after generating the dataset and train without reloading the 200 MB Pocket model. Saved pairs remain in browser storage.</p><p>After saving four or more paired sentences, run real WebGPU gradient updates on a small causal Conv1D network. The exported ONNX file has <code>audio_in → audio_out</code> and is checked with ONNX Runtime Web before being saved. This is not yet an LLVC-quality or verified speaker conversion pipeline.</p>',
@@ -116,6 +118,7 @@ function render(){
  $("trainer-export").disabled=busy||!S.pairs;
  $("trainer-reset").disabled=busy;
  $("trainer-goal").disabled=busy;$("trainer-source").disabled=busy;
+ $("trainer-target").disabled=busy;$("trainer-refresh-voices").disabled=busy;
  $("trainer-count").textContent=clock(S.seconds)+" / "+clock(S.goal);
  $("trainer-pairs").textContent=S.pairs+" saved pairs";
  $("trainer-progress").value=Math.min(100,100*S.seconds/Math.max(1,S.goal));
@@ -199,11 +202,92 @@ function combine(){
  for(const c of app.currentChunks){out.set(c,off);off+=c.length}
  return out;
 }
+let savedVoices=[],targetPCM=null,loadedCustomKey=null;
+function selectedSaved(key){
+ const id=key.slice("saved:".length);
+ return savedVoices.find(v=>String(v.id)===id);
+}
+async function refreshSavedVoices(){
+ let db;
+ try{
+  db=await app.openDB();
+  const all=await new Promise((resolve,reject)=>{
+   const request=db.transaction("voices","readonly").objectStore("voices").getAll();
+   request.onsuccess=()=>resolve(request.result||[]);
+   request.onerror=()=>reject(request.error||Error("Cannot read saved Pocket voices"));
+  });
+  savedVoices=all;
+  refreshVoices();
+  return all;
+ }finally{db?.close()}
+}
+async function encodeClonedPCM(pcm,key){
+ if(app.isGenerating||app.isVoiceEncoding)throw Error("Pocket is already busy");
+ // Set the Pocket app to its existing saved-voice path. Do not force a
+ // separate TTS preview and do not pop up the save modal.
+ const copy=new Float32Array(pcm);
+ app.lastClonedPCM=new Float32Array(pcm);
+ app.isVoiceEncoding=true;
+ app.isLoadingSavedVoice=true;
+ try{
+  await waitFor("voice_encoded",()=>{
+   app.worker.postMessage({type:"encode_voice",data:{audio:copy}},[copy.buffer]);
+  },null,180000);
+  loadedCustomKey=key;
+ }catch(e){
+  app.isVoiceEncoding=false;app.isLoadingSavedVoice=false;
+  throw e;
+ }
+}
+async function prepareTarget(){
+ const choice=$("trainer-target").value;
+ if(choice.startsWith("saved:")){
+  const record=selectedSaved(choice);
+  if(!record||!record.pcm)throw Error("Saved target voice was not found. Click Refresh My Voices.");
+  targetPCM=new Float32Array(record.pcm);
+  await encodeClonedPCM(targetPCM,choice);
+ }else{
+  if(!app.customVoiceLoaded||!app.lastClonedPCM||app.lastClonedPCM.length<24000*2)
+   throw Error("Select a saved Pocket voice in Target, or record/upload your voice and wait for encoding. No preview generation is required.");
+  targetPCM=new Float32Array(app.lastClonedPCM);
+  loadedCustomKey="current";
+  if(app.activeVoice!=="custom")await waitFor("voice_set",()=>{
+   app.worker.postMessage({type:"set_voice",data:{voiceName:"custom"}});
+  },m=>m.voiceName==="custom");
+ }
+ if(targetPCM.length<24000*2)throw Error("Target reference recording needs at least 2 seconds of audio.");
+ return voiceFingerprint(targetPCM);
+}
+async function selectSpeechVoice(voice){
+ if(voice==="target"){
+  const key=$("trainer-target").value;
+  if(loadedCustomKey!==key){
+   if(!targetPCM)throw Error("Target voice was not prepared");
+   await encodeClonedPCM(targetPCM,key);
+  }
+  await waitFor("voice_set",()=>app.worker.postMessage({
+   type:"set_voice",data:{voiceName:"custom"}
+  }),m=>m.voiceName==="custom");
+  app.el.voiceSelect.value="custom";app.activeVoice="custom";
+ }else if(voice.startsWith("saved:")){
+  const record=selectedSaved(voice);
+  if(!record||!record.pcm)throw Error("Saved source voice is no longer available");
+  if(loadedCustomKey!==voice)await encodeClonedPCM(record.pcm,voice);
+  await waitFor("voice_set",()=>app.worker.postMessage({
+   type:"set_voice",data:{voiceName:"custom"}
+  }),m=>m.voiceName==="custom");
+  app.el.voiceSelect.value="custom";app.activeVoice="custom";
+ }else{
+  await waitFor("voice_set",()=>app.worker.postMessage({
+   type:"set_voice",data:{voiceName:voice}
+  }),m=>m.voiceName===voice);
+  app.el.voiceSelect.value=voice;app.activeVoice=voice;
+ }
+}
 async function synth(text,voice){
  if(S.cancel)throw Error("Stopped by user");
  if(app.isGenerating||app.isVoiceEncoding)throw Error("Pocket is already generating speech");
- await waitFor("voice_set",()=>app.worker.postMessage({type:"set_voice",data:{voiceName:voice}}),m=>m.voiceName===voice);
- app.el.voiceSelect.value=voice;app.activeVoice=voice;
+ await selectSpeechVoice(voice);
  app.el.textInput.value=text;
  app.el.textInput.dispatchEvent(new Event("input",{bubbles:true}));
  await waitFor("stream_ended",()=>app.generate());
@@ -223,41 +307,90 @@ async function refresh(){
 $("trainer-goal").addEventListener("change",()=>{S.goal=Number($("trainer-goal").value);render()});
 function refreshVoices(){
  const list=app.builtinVoices||[];
- if(!list.length)return;
- const select=$("trainer-source"),prior=select.value;select.replaceChildren();
- for(const id of list){
-  const o=document.createElement("option");o.value=id;o.textContent=id+" (Pocket original)";
-  select.append(o);
+ const source=$("trainer-source"),target=$("trainer-target");
+ const prevSource=source.value,prevTarget=target.value;
+ source.replaceChildren();target.replaceChildren();
+ const targetCurrent=document.createElement("option");
+ targetCurrent.value="current";
+ targetCurrent.textContent="Current uploaded/recorded Pocket clone (no saved name)";
+ target.append(targetCurrent);
+ const available=document.createElement("optgroup");available.label="Saved custom voices (your My Voices library)";
+ for(const record of savedVoices){
+  const key="saved:"+record.id;
+  const targetOption=document.createElement("option");targetOption.value=key;
+  targetOption.textContent=record.name+" • saved custom voice";
+  available.append(targetOption);
  }
- select.value=list.includes(prior)?prior:list.includes("alba")?"alba":list[0];
+ target.append(available);
+ const sourceBuiltins=document.createElement("optgroup");
+ sourceBuiltins.label="Built-in Pocket input speakers";
+ for(const id of list){
+  const option=document.createElement("option");option.value=id;
+  option.textContent=id+" • built-in source";
+  sourceBuiltins.append(option);
+ }
+ source.append(sourceBuiltins);
+ const sourceSaved=document.createElement("optgroup");
+ sourceSaved.label="Saved custom input speakers (slower: re-encodes each pair)";
+ for(const record of savedVoices){
+  const option=document.createElement("option");option.value="saved:"+record.id;
+  option.textContent=record.name+" • saved source voice";
+  sourceSaved.append(option);
+ }
+ source.append(sourceSaved);
+ const targetKeys=["current",...savedVoices.map(v=>"saved:"+v.id)];
+ target.value=targetKeys.includes(prevTarget)?prevTarget:
+  (app.activeSavedVoiceId!=null&&targetKeys.includes("saved:"+app.activeSavedVoiceId)
+    ?"saved:"+app.activeSavedVoiceId:targetKeys[0]);
+ const sourceKeys=[...list,...savedVoices.map(v=>"saved:"+v.id)];
+ source.value=sourceKeys.includes(prevSource)?prevSource:(list.includes("alba")?"alba":sourceKeys[0]||"");
 }
 let voiceCount=0;
-setInterval(()=>{if(voiceCount!==app.builtinVoices.length){voiceCount=app.builtinVoices.length;refreshVoices()}},1600);
+setInterval(()=>{
+ if(voiceCount!==app.builtinVoices.length){
+  voiceCount=app.builtinVoices.length;refreshVoices();
+ }
+},1600);
+$("trainer-refresh-voices").addEventListener("click",()=>{
+ refreshSavedVoices().then(all=>notice("Found "+all.length+
+  " saved custom voices. Select one in Target, then generate pairs directly; no MP3 needed."))
+ .catch(e=>notice("Could not read My Voices: "+e.message,true));
+});
 refreshVoices();
+refreshSavedVoices().catch(e=>notice("Could not load your saved Pocket voice list: "+e.message,true));
 async function generateDataset(){
  if(S.running||S.training)return;
  if(!$("trainer-consent").checked){notice("Confirm that you own or have permission to clone the voice.",true);return}
  if(!app.isWorkerReady){notice("Load the Pocket ONNX model in the panel above first.",true);return}
  if(app.el.langSelect.value!=="english_2026-04"){notice("Please switch to the English Pocket model for this synthetic dataset.",true);return}
- if(!app.customVoiceLoaded||!app.lastClonedPCM||app.lastClonedPCM.length<24000*2){
-  notice("Upload or record at least two seconds in the Voice Clone section and wait for Voice cloned.",true);return;
- }
- const hash=voiceFingerprint(app.lastClonedPCM);
- if(S.hash&&S.hash!==hash){notice("This saved project is for another voice. Export its data, then reset the project.",true);return}
  const source=$("trainer-source").value;
- if(!app.builtinVoices.includes(source)){notice("Please choose an available built-in Pocket voice.",true);return}
- if(app.isGenerating||app.isVoiceEncoding){notice("Pocket is currently busy. Finish that generation first.",true);return}
- S.running=true;S.cancel=false;S.hash=hash;S.goal=Number($("trainer-goal").value);
- await D.putMeta("progress",{cursor:S.cursor,hash,source});
+ if(!app.builtinVoices.includes(source)&&!(source.startsWith("saved:")&&selectedSaved(source))){
+  notice("Select an available built-in or saved custom source voice.",true);return;
+ }
+ if(app.isGenerating||app.isVoiceEncoding){notice("Finish any current Pocket generation before making pairs.",true);return}
+ if($("trainer-target").value===source){
+  notice("Choose different source and target voices. Identical voices don't create conversion pairs.",true);return;
+ }
+ S.running=true;S.cancel=false;S.goal=Number($("trainer-goal").value);
  render();
  const originalPlay=app.player?.playAudio;
- if(app.player)app.player.playAudio=()=>{}; // capture real PCM without hours of audio playback
+ if(app.player)app.player.playAudio=()=>{}; // collect actual Pocket PCM without manual playback
  try{
+  notice("Preparing selected saved target voice in Pocket encoder. No preview or MP3 required…");
+  const hash=await prepareTarget();
+  const old=await D.getMeta("progress");
+  if(S.hash&&S.hash!==hash)
+   throw Error("This project already contains another target voice. Export its ZIP and reset before switching.");
+  if(S.pairs&&old?.value?.source&&old.value.source!==source)
+   throw Error("This dataset already uses another source voice. Export and reset before switching.");
+  S.hash=hash;
+  await D.putMeta("progress",{cursor:S.cursor,hash,source,target:$("trainer-target").value});
+
   while(!S.cancel&&S.seconds<S.goal){
    const index=S.cursor,text=words(index);
    notice("Pair "+(index+1)+": generating the cloned Pocket target speech… "+
     clock(S.seconds)+" / "+clock(S.goal)+" saved.\n"+text);
-   let target=await synth(text,"custom");
+   let target=await synth(text,"target");
    notice("Pair "+(index+1)+": generating the original Pocket comparison voice "+source+"…");
    let original=await synth(text,source);
    target=D.trimSilence(D.resample(target,24000));
@@ -267,12 +400,12 @@ async function generateDataset(){
    const aligned=D.stretch(original,target.length);
    const pair={id:"pair-"+String(index).padStart(5,"0"),index,text,
     seconds:target.length/D.SR,source:D.wav(aligned),target:D.wav(target),
-    sourceVoice:source,reference:hash,
+    sourceVoice:source,targetVoice:$("trainer-target").value,reference:hash,
     alignment:"Coarse duration stretch only, not phonetic/frame-aligned RVC conversion",
     createdAt:new Date().toISOString()};
    await D.savePair(pair);
    S.cursor++;S.pairs++;S.seconds+=pair.seconds;
-   await D.putMeta("progress",{cursor:S.cursor,hash,source});
+   await D.putMeta("progress",{cursor:S.cursor,hash,source,target:$("trainer-target").value});
    render();
    notice("Saved "+S.pairs+" Pocket speech pairs ("+clock(S.seconds)+
     " / "+clock(S.goal)+"). Progress is saved after each completed pair.");
@@ -283,7 +416,7 @@ async function generateDataset(){
  }catch(e){notice("Paused after "+clock(S.seconds)+" saved. "+e.message,true)}
  finally{
   if(app.player&&originalPlay)app.player.playAudio=originalPlay;
-  S.running=false;S.cancel=false;render();
+  S.running=false;S.cancel=false;targetPCM=null;loadedCustomKey=null;render();
  }
 }
 $("trainer-generate").addEventListener("click",()=>void generateDataset());
