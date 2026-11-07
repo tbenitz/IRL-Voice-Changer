@@ -127,9 +127,11 @@ async function runTraining({steps=240,allowCPU=true,onProgress=()=>{},onEpoch=()
  if(pairs.length<4)throw Error("Need at least 4 paired Pocket TTS sentences before training.");
  const loaded=await cacheSamples(pairs,Math.min(pairs.length,12));
  const actualPairs=pairs.filter(p=>loaded.has(p.id));
- const {tf,backend}=await setupTF(onProgress,allowCPU);
+ const device=await setupTF(onProgress,allowCPU);
+ const tf=device.tf;
+ let backend=device.backend;
  let model=createModel(tf);
- const optimizer=tf.train.adam(.0005);
+ let optimizer=tf.train.adam(.0005);
  const windowLen=1024,batch=6;
  let finalLoss=NaN,completed=0;
  try{
@@ -144,6 +146,7 @@ async function runTraining({steps=240,allowCPU=true,onProgress=()=>{},onEpoch=()
    const source=tf.tensor3d(x,[batch,windowLen,1]);
    const target=tf.tensor3d(y,[batch,windowLen,1]);
    let loss=null;
+   let retryCPU=false;
    try{
     // Train actual weights; identity preservation discourages output collapse
     // caused by imperfect alignment between independently generated TTS clips.
@@ -157,10 +160,24 @@ async function runTraining({steps=240,allowCPU=true,onProgress=()=>{},onEpoch=()
     finalLoss=(await loss.data())[0];
     if(!Number.isFinite(finalLoss))throw Error("Training diverged (nonfinite loss)");
    }catch(e){
-    const guidance=backend==="webgpu"?"WebGPU gradient kernels failed ("+e.message+
-      "). Try CPU fallback, a smaller dataset, or a different Chrome version.":e.message;
-    throw Error(guidance);
+    if(backend==="webgpu"&&allowCPU){
+     retryCPU=true;
+     onProgress("WebGPU gradient execution failed ("+e.message+
+      "). Attempting slower local CPU training instead, without claiming GPU success.");
+    }else throw Error(backend==="webgpu"?"WebGPU gradient kernels failed: "+e.message:e.message);
    }finally{source.dispose();target.dispose();loss?.dispose()}
+   if(retryCPU){
+    // WebGPU kernels are not all differentiable in TFJS 4.22.
+    // Start from a clean CPU model instead of using partially failed weights.
+    optimizer.dispose?.();model.dispose();
+    if(!await tf.setBackend("cpu"))throw Error("WebGPU training failed and TensorFlow CPU fallback is unavailable");
+    await tf.ready();
+    model=createModel(tf);
+    optimizer=tf.train.adam(.0005);
+    backend="cpu";finalLoss=NaN;completed=0;step=-1;
+    onProgress("Restarted real gradient training on CPU; data and voice stays local.");
+    continue;
+   }
    completed=step+1;
    if(step%5===0||completed===steps){
     onEpoch({completed,steps,loss:finalLoss,backend});
