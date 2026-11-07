@@ -73,9 +73,13 @@ async function cacheModel(name,blob){
 }
 async function savedStudentModel(){
  return await new Promise((resolve,reject)=>{
-  const open=indexedDB.open("pocket-streaming-student-v1",1);
+  const open=indexedDB.open("pocket-streaming-student-v1",2);
   open.onerror=()=>reject(open.error||Error("Cannot open saved trainer models"));
-  open.onupgradeneeded=()=>{}; // No synthetic model is created automatically here.
+  open.onupgradeneeded=()=>{
+   const db=open.result;
+   if(!db.objectStoreNames.contains("pairs"))db.createObjectStore("pairs",{keyPath:"id"});
+   if(!db.objectStoreNames.contains("meta"))db.createObjectStore("meta",{keyPath:"key"});
+  }; // Safe even when Fast Neural is opened before Pocket Trainer.
   open.onsuccess=()=>{
    const db=open.result;
    if(!db.objectStoreNames.contains("meta")){
