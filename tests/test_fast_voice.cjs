@@ -70,6 +70,8 @@ vm.runInNewContext(source,context);
   type:"init",model:new ArrayBuffer(65536),historySamples:2048
  }});
  assert(outputs.some(x=>x.type==="ready"),"Small trained neural ONNX did not initialize");
+ assert(outputs.some(x=>x.type==="build"&&x.build==="20261106-cacheguard-v5"),
+   "Worker build handshake must be available to fail closed on version mismatches");
  assert(outputs.some(x=>x.type==="stage" && /64\.0 KB neural ONNX/.test(x.text)),
         "Loading status must reflect the actual model size instead of saying 13.7 MB");
  assert.equal(sessionLoads,1);
@@ -88,6 +90,16 @@ vm.runInNewContext(source,context);
  assert(!control.includes("app.source.connect(ctx.destination)"),"Dry microphone route detected");
  assert(!control.includes("src.connect(ctx.destination)"),"Direct microphone playback detected");
  assert(html.includes('id="rtf"'),"Real-time speed diagnostics missing");
+ assert(html.includes("fast-voice.js?v=20261106-cacheguard-v5"),
+   "Page must load matching versioned fast neural controller");
+ assert(html.includes('id="reload-engine"')&&html.includes('id="engine-build"'),
+   "Page must expose engine version and safe recovery reload");
+ assert(control.includes('cache:"no-store"')&&control.includes("new Worker(blobUrl)"),
+   "Fast Neural must fetch and verify the worker instead of trusting stale Worker() cache");
+ assert(control.includes('const FAST_BUILD="20261106-cacheguard-v5"'),
+   "Controller and real streaming worker build IDs must agree");
+ assert(!control.includes('new Worker("./fast-voice-worker.js?v=20261106-f1")'),
+   "Obsolete fixed worker launch must not recur");
  assert(html.includes("fast-voice.js"),"Neural controller missing");
  console.log("PASS: real tiny ONNX pipeline wired, 16kHz mic decimation, one persistent model, no dry audio passthrough");
 })().catch(e=>{console.error(e);process.exitCode=1});
