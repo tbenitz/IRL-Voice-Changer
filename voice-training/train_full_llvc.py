@@ -205,7 +205,7 @@ def export(upstream, output, steps, name):
         "held_out_output_rms": voice_rms,
         "limitations": "ONNX execution verified. Speaker similarity, naturalness, and Chromebook RTF require listening and device testing."}
     (output / "model_report.json").write_text(json.dumps(report, indent=2))
-    print("REAL trained full-size ONNX exported:", onnx_path, f"({onnx_path.stat().st_size()/1e6:.2f} MB)")
+    print("REAL trained full-size ONNX exported:", onnx_path, f"({onnx_path.stat().st_size/1e6:.2f} MB)")
     print(json.dumps(report, indent=2))
     return onnx_path
 
