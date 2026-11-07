@@ -56,11 +56,17 @@ panel.innerHTML=[
  '<button id="trainer-export">Download recorded WAVs ZIP</button>',
  '<button id="trainer-reset">Start a new voice project</button></div>',
  '<div id="trainer-status" class="status" role="status" aria-live="polite">Choose your saved target voice, load Pocket, and generate target speech silently. No MP3, other voice or manual preview is required.</div>',
- '<div class="sub"><span class="ey">WebGPU neural student • Automatic ONNX</span>',
- '<h3 style="font-size:22px">Train locally and export a model</h3>',
- '<p>Experimental waveform training requires four or more optional two-voice pairs. One-voice speech recordings do NOT train the live converter. Independent Pocket source/target renders are not aligned teacher outputs, so successful voice identity is unverified. To free memory on an 8 GB Chromebook, refresh after collection before training.</p>',
+ '<div class="sub"><span class="ey">For real teacher-student custom voice training</span>',
+ '<h3 style="font-size:22px">Import synchronized voice-conversion pairs</h3>',
+ '<p>These MUST come from a trained custom voice-conversion teacher processing the exact same original recording. Select matching <code>001_original.wav</code> and <code>001_converted.wav</code> files (16 kHz mono PCM16). Two separately generated Pocket TTS voices are NOT equivalent to aligned teacher data. At least four pairs are needed for research training. This importer does NOT train the required RVC teacher.</p>',
+ '<input id="trainer-teacher-files" type="file" multiple accept=".wav,audio/wav">',
+ '<div class="actions"><button id="trainer-import-teacher">Import aligned teacher WAVs</button></div>',
+ '<div id="trainer-teacher-status" class="status" role="status" aria-live="polite">No aligned teacher audio imported. Saved Pocket voices and recordings are unchanged.</div></div>',
+ '<div class="sub"><span class="ey">Experimental small ONNX adapter · NOT trained 13 MB LLVC</span>',
+ '<h3 style="font-size:22px">Research small student — not a finished custom voice</h3>',
+ '<p>The old 65 KB output has just three 31-tap convolution layers and about 6 ms of receptive field, not the pretrained 13 MB LLVC architecture. Neural training now requires real teacher-aligned source/converted WAVs; independent Pocket TTS pairs are rejected instead of producing more near-identical models. Even with correct data this small research adapter is NOT a guaranteed speaker clone.</p>',
  '<label class="check"><input type="checkbox" id="trainer-cpu" checked><span>Permit slower CPU training if WebGPU is unavailable or unsupported.</span></label>',
- '<div class="actions"><button id="trainer-train" class="primary">Train locally and auto-export ONNX</button>',
+ '<div class="actions"><button id="trainer-train" class="primary">Train experimental adapter on teacher WAVs</button>',
  '<button id="trainer-stop-training" disabled>Stop training after current step</button>',
  '<button id="trainer-onnx" disabled>Download trained ONNX</button>',
  '<button id="trainer-open-fast">Open Fast Neural AI</button></div>',
@@ -75,7 +81,7 @@ const trainNotice=(msg,bad=false)=>{
  const el=$("trainer-training-status");el.textContent=String(msg);el.classList.toggle("bad",bad)
 };
 const S={running:false,training:false,cancel:false,cancelTraining:false,
- cursor:0,seconds:0,pairs:0,paired:0,hash:null,goal:1800};
+ cursor:0,seconds:0,pairs:0,paired:0,aligned:0,hash:null,goal:1800};
 let pending=null;
 const oldHandle=app.handleWorkerMessage.bind(app);
 app.handleWorkerMessage=msg=>{
@@ -115,7 +121,7 @@ function rejectPending(){
 function clock(v){const n=Math.round(v);return Math.floor(n/60)+":"+String(n%60).padStart(2,"0")}
 function render(){
  const busy=S.running||S.training;
- $("trainer-generate").disabled=busy;$("trainer-train").disabled=busy||S.paired<4;
+ $("trainer-generate").disabled=busy;$("trainer-train").disabled=busy||S.aligned<4;
  $("trainer-stop").disabled=!S.running;
  $("trainer-stop-training").disabled=!S.training;
  $("trainer-export").disabled=busy||!S.pairs;
@@ -123,7 +129,7 @@ function render(){
  $("trainer-goal").disabled=busy;$("trainer-mode").disabled=busy;$("trainer-source").disabled=busy;
  $("trainer-target").disabled=busy;$("trainer-refresh-voices").disabled=busy;
  $("trainer-count").textContent=clock(S.seconds)+" / "+clock(S.goal);
- $("trainer-pairs").textContent=S.pairs+" target recordings, "+S.paired+" experimental pairs";
+ $("trainer-pairs").textContent=S.pairs+" recordings; "+S.aligned+" teacher-aligned pairs";
  $("trainer-progress").value=Math.min(100,100*S.seconds/Math.max(1,S.goal));
  const paired=$("trainer-mode").value==="paired-experimental";
  $("trainer-source-label").hidden=!paired;
@@ -313,6 +319,7 @@ async function synth(text,voice){
 async function refresh(){
  const pairs=await D.listPairs(),st=await D.getMeta("progress");
  S.pairs=pairs.length;S.paired=pairs.filter(p=>p.source&&p.target).length;
+ S.aligned=pairs.filter(p=>p.mode==="teacher-parallel"&&p.source&&p.target).length;
  S.seconds=pairs.reduce((s,p)=>s+(p.seconds||0),0);
  S.cursor=st?.value?.cursor??pairs.length;S.hash=st?.value?.hash??null;
  S.goal=Number($("trainer-goal").value);
@@ -515,18 +522,18 @@ $("trainer-reset").addEventListener("click",async()=>{
  if(S.running||S.training)return;
  if(!confirm("Delete this project's saved synthetic speech pairs and experimental ONNX? Your saved Pocket voice references are kept."))return;
  try{
-  await D.clearPairs();Object.assign(S,{cursor:0,seconds:0,pairs:0,paired:0,hash:null});
+  await D.clearPairs();Object.assign(S,{cursor:0,seconds:0,pairs:0,paired:0,aligned:0,hash:null});
   await refresh();notice("New voice project created; previously saved Pocket voices were not changed.");
  }catch(e){notice("Project reset failed: "+e.message,true)}
 });
 $("trainer-train").addEventListener("click",async()=>{
  if(S.running||S.training)return;
- if(S.paired<4){trainNotice("Experimental two-voice research training needs four or more paired recordings. One-voice cloned speech cannot train this converter.",true);return}
+ if(S.aligned<4){trainNotice("Four or more real aligned original/teacher-converted WAV pairs are required. Independent Pocket TTS speech is NOT valid for teacher-student voice conversion.",true);return}
  if(!$("trainer-consent").checked){trainNotice("Confirm consent before training.",true);return}
  S.training=true;S.cancelTraining=false;render();
  try{
   if(!window.PocketTrainerWebGPU)throw Error("Local training engine did not load");
-  trainNotice("Starting real local gradient training on synthetic pairs (quality unverified)…");
+  trainNotice("Starting experimental small-model training on real teacher-aligned audio, not independently generated TTS. Voice quality remains unverified…");
   const out=await window.PocketTrainerWebGPU.runTraining({
    steps:Number($("trainer-steps").value),allowCPU:$("trainer-cpu").checked,
    cancelled:()=>S.cancelTraining,
