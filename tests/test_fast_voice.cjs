@@ -67,7 +67,7 @@ const outputs=[],self={postMessage(x){outputs.push(x)},onmessage:null},context={
 vm.runInNewContext(source,context);
 (async()=>{
  await self.onmessage({data:{
-  type:"init",model:new ArrayBuffer(65536),historySamples:2048
+  type:"init",model:new ArrayBuffer(65536),historySamples:2048,requireVoiceChange:false
  }});
  assert(outputs.some(x=>x.type==="ready"),"Small trained neural ONNX did not initialize");
  assert(outputs.some(x=>x.type==="build"&&x.build==="20261107-voice-safety-v7"),
@@ -80,6 +80,8 @@ vm.runInNewContext(source,context);
   await self.onmessage({data:{type:"convert",pcm}});
   assert(outputs.filter(x=>x.type==="audio").length===i+1);
   assert.equal(outputs.filter(x=>x.type==="audio").at(-1).pcm.length,2048);
+  assert(Number.isFinite(outputs.filter(x=>x.type==="audio").at(-1).changeRatio),
+    "Worker must report measurable ONNX output-vs-input differences");
  }
  assert.equal(sessionRuns,3);
  assert.equal(sessionLoads,1,"Neural session must persist across microphone chunks");
@@ -104,9 +106,15 @@ vm.runInNewContext(source,context);
    "Default live microphone chunk should be 512 ms on slow Chromebook hardware");
  assert(html.includes('value="saved"') && html.includes('value="custom"'),
    "Live UI needs distinct saved auto-load and manual-file ONNX modes");
- assert(control.includes('requireVoiceChange:["saved","custom"].includes'),
+ assert(control.includes("requireVoiceChange:true"),
    "Live controller must enforce no-passthrough protection for saved/manual ONNX models");
   assert(html.includes('id="rtf"'),"Real-time speed diagnostics missing");
+ assert(html.includes('id="wave-change"')&&html.includes('id="wave-corr"'),
+  "The UI must show measured neural waveform changes, not just claim AI output");
+ assert(html.includes('id="audit-start"')&&html.includes('id="audit-output"')&&html.includes('id="audit-source"'),
+  "Actual ONNX output and original microphone must have local side-by-side recorded previews");
+ assert(control.includes("collectAudit(app.inFlightSource,pcm)"),
+  "Only the real ONNX PCM received through the worker may be saved as the neural A/B test");
  assert(html.includes("fast-voice.js?v=20261107-voice-safety-v7"),
    "Page must load matching versioned fast neural controller");
  assert(html.includes('id="reload-engine"')&&html.includes('id="engine-build"'),
