@@ -4,7 +4,7 @@
    Browser WASM inference; main thread owns capture/output and keeps voice muted on errors.
  */
 "use strict";
-const WORKER_BUILD="20261107-custom-training-fix-v11";
+const WORKER_BUILD="20261107-context-preflight-v12";
 const ORT_DIST="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/";
 let ortReady=false, session=null, history=new Float32Array(4096), busy=false, initialized=false;
 let sourceRate=16000;
@@ -52,6 +52,40 @@ async function loadModel(bytes){
    ins.join(",")+" → "+outs.join(","));
  initialized=true;unchangedSpeechChunks=0;
  send("ready",{inputs:ins,outputs:outs,identityGuard:requireVoiceChange});
+}
+// Check high-context inference speed before starting the live microphone.
+// Benchmarks only locally synthesized audio; does not alter voice weights.
+async function preflight(chunkFrames){
+ if(!initialized||!session||busy)throw Error("Neural model not ready for preflight");
+ if(!Number.isInteger(chunkFrames)||chunkFrames<512||chunkFrames>8192)
+  throw Error("Invalid mic chunk size for preflight");
+ busy=true;
+ const requested=history.length,measured=[];
+ try{
+  const audioMs=chunkFrames/16;
+  // Warm the WASM kernel at short context; do not confuse initialization
+  // overhead with stable 500/1000 ms inference throughput.
+  const warm=new Float32Array(2048+chunkFrames);
+  await session.run({audio_in:new ort.Tensor("float32",warm,[1,1,warm.length])});
+  while(true){
+   const n=history.length+chunkFrames;
+   const probe=new Float32Array(n);
+   for(let i=history.length;i<n;i++)probe[i]=.08*Math.sin((i-history.length)*2*Math.PI*190/16000);
+   const t0=performance.now();
+   const out=await session.run({audio_in:new ort.Tensor("float32",probe,[1,1,n])});
+   if(!out.audio_out?.data||out.audio_out.data.length<n)throw Error("ONNX preflight returned no valid PCM");
+   const ms=performance.now()-t0,rtf=ms/audioMs;
+   measured.push({historySamples:history.length,inferenceMs:Math.round(ms),rtf:Number(rtf.toFixed(2))});
+   if(rtf<=.82||history.length<=2048)break;
+   const next=history.length>8000?8000:history.length>4096?4096:2048;
+   resetHistory(next);
+  }
+  const last=measured[measured.length-1];
+  const sustainable=last.rtf<=.98;
+  resetHistory(history.length); // clear synthetic preflight audio
+  send("preflight",{requestedHistory:requested,historySamples:history.length,
+   sustainable,measurements:measured,inferenceMs:last.inferenceMs,rtf:last.rtf});
+ }finally{busy=false}
 }
 async function infer(chunk){
  if(!initialized||!session)throw Error("Model not initialized");
@@ -136,7 +170,11 @@ self.onmessage=async event=>{
    await loadModel(m.model);
   }catch(e){send("error",{text:"Tiny neural model init: "+err(e)})}
   finally{busy=false}
- }else if(m.type==="config"){
+  }else if(m.type==="preflight"){
+   if(busy||!initialized){send("error",{text:"Cannot benchmark: neural worker is not ready"});return}
+   try{await preflight(Number(m.chunkFrames))}
+   catch(e){send("error",{text:"Neural preflight: "+err(e)})}
+  }else if(m.type==="config"){
   if(!busy){
    try{
     resetHistory(Number(m.historySamples)||4096,true);
