@@ -45,15 +45,16 @@ async function setupTF(progress,allowCPU){
  progress("Using CPU fallback; training is still local but substantially slower than GPU.");
  return {tf:root.tf,backend:"cpu"};
 }
-// TFJS 4.22 does not implement Conv1D CAUSAL padding. SAME uses bounded
-// future lookahead (<=96 samples / 6 ms) and is supported for gradients.
+// TFJS 4.22 does not support CAUSAL Conv1D or dilated Conv2D gradients.
+// Use trainable SAME non-dilated 31-tap convolutions (at most 45 samples
+// = 2.8 ms future lookahead) and export identical weights to ONNX.
 function createModel(tf){
  const input=tf.input({shape:[null,1],name:"training_audio"});
- let x=tf.layers.conv1d({filters:16,kernelSize:13,dilationRate:1,
+ let x=tf.layers.conv1d({filters:16,kernelSize:31,dilationRate:1,
   padding:"same",activation:"tanh",name:"pocket_conv1"}).apply(input);
- x=tf.layers.conv1d({filters:16,kernelSize:13,dilationRate:4,
+ x=tf.layers.conv1d({filters:16,kernelSize:31,dilationRate:1,
   padding:"same",activation:"tanh",name:"pocket_conv2"}).apply(x);
- x=tf.layers.conv1d({filters:16,kernelSize:13,dilationRate:16,
+ x=tf.layers.conv1d({filters:16,kernelSize:31,dilationRate:1,
   padding:"same",activation:"tanh",name:"pocket_conv3"}).apply(x);
  x=tf.layers.conv1d({filters:1,kernelSize:1,
   padding:"same",activation:"linear",name:"pocket_conv4",
