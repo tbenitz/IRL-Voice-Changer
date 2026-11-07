@@ -41,5 +41,6 @@ jobs:
           path: |
             /tmp/irl-voice-audio-test/voice-source.wav
             /tmp/irl-voice-audio-test/voice-onnx-13mb.wav
+            /tmp/irl-voice-audio-test/voice-onnx-plus6-dsp.wav
             /tmp/irl-voice-audio-test/metrics.json
           retention-days: 30
