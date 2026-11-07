@@ -113,6 +113,43 @@ class PipelineSmoke(unittest.TestCase):
         self.assertTrue(any(re.search(p, "LLVC training 250/500 steps")
                             for p in patterns))
 
+    def test_direct_pth_download_available_before_onnx(self):
+        available = get_function(
+            ROOT / "hf-space" / "app.py", "available_model_files",
+            {"re": re, "Path": Path}
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            job = Path(tmp)
+            output = job / "llvc-trained"
+            checkpoint = output / "checkpoints"
+            checkpoint.mkdir(parents=True)
+            pth = checkpoint / "G_100.pth"
+            pth.write_bytes(b"p" * 2_000_001)
+            self.assertEqual(available(job), (str(pth), None))
+            onnx = output / "my_voice.onnx"
+            onnx.write_bytes(b"o" * 2_000_001)
+            # An unverified ONNX is never advertised as downloadable.
+            self.assertEqual(available(job), (str(pth), None))
+            report = output / "model_report.json"
+            report.write_text(json.dumps({
+                "file": onnx.name, "steps": 100,
+                "size_bytes": onnx.stat().st_size,
+                "onnx_io": "audio_in -> audio_out"
+            }))
+            self.assertEqual(available(job), (str(pth), str(onnx)))
+            # Simulate truncated model after report was written.
+            onnx.write_bytes(b"truncated")
+            self.assertEqual(available(job), (str(pth), None))
+
+    def test_space_no_longer_requires_zip(self):
+        app = (ROOT / "hf-space" / "app.py").read_text()
+        pipeline = (ROOT / "one_click_pipeline.py").read_text()
+        self.assertIn('"--skip-zip"', app)
+        self.assertIn('outputs=[status, pth_download, onnx_download, progress_panel]', app)
+        self.assertIn('if args.skip_zip:', pipeline)
+        self.assertIn('DONE: PTH and ONNX saved separately. ZIP packaging skipped entirely.', pipeline)
+        self.assertNotIn('recover_completed_model(', app)
+
     def test_source_corpus_does_not_transcode_all_800_candidates(self):
         source_corpus = get_function(
             ROOT / "generate_teacher_pairs.py", "source_corpus",
