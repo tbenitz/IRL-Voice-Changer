@@ -33,7 +33,7 @@ COPY app.py /app/app.py
 
 RUN useradd -m -u 1000 user && \
     mkdir -p /home/user/voice-data/voice-jobs /home/user/voice-data/voice-cache /home/user/voice-data/hf-cache /home/user/voice-data/tmp && \
-    chown -R user:user /home/user/voice-data /app/app.py /app/seed-vc /app/llvc-upstream
+    chown -R user:user /home/user/voice-data /app/app.py /app/irl-voice /app/seed-vc /app/llvc-upstream
 
 ENV HOME=/home/user TMPDIR=/home/user/voice-data/tmp
 
