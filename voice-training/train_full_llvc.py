@@ -52,9 +52,10 @@ def setup(upstream, output, dataset, steps, batch):
     config["aux_fairseq"]["c"] = 0
     config["discriminator"] = "hfg"
     config["fp16_run"] = True
+    config["optim"]["lr"] = 2e-5  # Gentle fine-tuning, do not overwrite pretrained timbre with 5e-4.
     # Save intermediate checkpoints so GPU interruptions do not erase the run.
     config["checkpoint_interval"] = min(500, steps)
-    config["log_interval"] = max(100, steps)
+    config["log_interval"] = 100  # Needed: upstream nests checkpoint saving inside this log block.
     config["max_steps"] = steps
     config["test_dir"] = str(upstream / "test_wavs")
     output.mkdir(parents=True, exist_ok=True)
@@ -79,6 +80,16 @@ def setup(upstream, output, dataset, steps, batch):
             "                    return\n"
         )
         original = original.replace(key, patch + key)
+        # Print useful progress even when tensorboard is not open.
+        progress_marker = "            global_step += 1\n"
+        require(original.count(progress_marker) == 1,
+                "Official LLVC training progress loop changed; refusing unsafe patch")
+        original = original.replace(
+            progress_marker,
+            progress_marker +
+            "            if global_step % 25 == 0 and is_main_process:\n"
+            "                print(f'LLVC training {global_step}/{config[\\'max_steps\\']} steps', flush=True)\n"
+        )
         # On a fresh run use the published full-size LLVC generator as the
         # initial model. On resume use our saved G/D training checkpoints.
         init_marker = "        epoch = 0\n"
