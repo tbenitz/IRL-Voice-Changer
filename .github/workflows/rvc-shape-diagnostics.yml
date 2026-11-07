@@ -92,30 +92,54 @@ jobs:
                        "threshold":np.asarray([.03],dtype=np.float32)})[0]
           print("REAL RMVPE",f0raw.shape,"range",float(np.nanmin(f0raw)),float(np.nanmax(f0raw)),flush=True)
           assert np.all(np.isfinite(f0raw)),"RMVPE returned nonfinite output"
-          generator=ort.InferenceSession("/tmp/voice.onnx",sess_options=opt,providers=["CPUExecutionProvider"])
-          unit12=result[[x.name for x in cv.get_outputs()].index("unit12")]
-          real_frames=min(512,unit12.shape[1]*2)
-          phone=np.zeros((1,512,768),dtype=np.float32)
-          phone[0,:real_frames]=np.repeat(unit12[0],2,axis=0)[:real_frames]
-          pitch=np.ones((1,512),dtype=np.int64)
-          f0=np.zeros((1,512),dtype=np.float32)
-          useful=min(f0raw.shape[-1],real_frames)
-          f0[0,:useful]=f0raw.reshape(-1)[:useful]
-          for i,hz in enumerate(f0[0,:useful]):
-              if hz>0: pitch[0,i]=max(1,min(255,round((1127*np.log(1+hz/700)-1127*np.log(1+50/700))*254/
-                  (1127*np.log(1+1100/700)-1127*np.log(1+50/700))+1)))
-          feed={
-             "phone":phone,
-             "phone_lengths":np.asarray([512],dtype=np.int64),
-             "pitch":pitch,
-             "nsff0":f0,
-             "sid":np.asarray([0],dtype=np.int64),
-             "noise":np.random.default_rng(3).standard_normal((1,192,512)).astype(np.float32)
-          }
-          start=time.monotonic()
-          wav=generator.run(None,feed)[0]
-          print("REAL RVC GENERATION",wav.shape,"dtype",wav.dtype,
-                "finite",bool(np.all(np.isfinite(wav))),"elapsed_seconds",round(time.monotonic()-start,2),flush=True)
-          assert np.all(np.isfinite(wav)),"Generator returned nonfinite audio"
-          print("PASS: three downloaded ONNX models executed actual inference on CPU",flush=True)
+          print("PASS: real ContentVec and RMVPE produced finite features and pitch; generator is tested with ONNX Runtime Web below.",flush=True)
           PY
+
+      - name: Run real RVC generator on the same ONNX Runtime Web WASM backend as Chrome
+        timeout-minutes: 9
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/rvc-web-smoke
+          npm --prefix /tmp/rvc-web-smoke install --no-audit --no-fund --silent onnxruntime-web@1.22.0
+          node <<'JS'
+          const fs=require("node:fs");
+          const path=require("node:path");
+          const ort=require("/tmp/rvc-web-smoke/node_modules/onnxruntime-web");
+          (async()=>{
+            ort.env.wasm.wasmPaths="/tmp/rvc-web-smoke/node_modules/onnxruntime-web/dist/";
+            ort.env.wasm.numThreads=1;
+            ort.env.wasm.proxy=false;
+            const bytes=fs.readFileSync("/tmp/voice.onnx");
+            const start=performance.now();
+            const ses=await ort.InferenceSession.create(bytes,{
+              executionProviders:["wasm"],graphOptimizationLevel:"basic",
+              enableCpuMemArena:false,enableMemPattern:false
+            });
+            console.log("WEB WASM MODEL INITIALIZED",ses.inputNames,ses.outputNames,
+              Math.round(performance.now()-start)+"ms");
+            const phone=new Float32Array(512*768).fill(.12);
+            const pitch=new BigInt64Array(512).fill(100n);
+            const f0=new Float32Array(512).fill(220);
+            const noise=new Float32Array(192*512);
+            for(let i=0;i<noise.length;i++)noise[i]=.05*Math.sin(i*1.23);
+            const inputs={
+              phone:new ort.Tensor("float32",phone,[1,512,768]),
+              phone_lengths:new ort.Tensor("int64",new BigInt64Array([512n]),[1]),
+              pitch:new ort.Tensor("int64",pitch,[1,512]),
+              nsff0:new ort.Tensor("float32",f0,[1,512]),
+              sid:new ort.Tensor("int64",new BigInt64Array([0n]),[1]),
+              noise:new ort.Tensor("float32",noise,[1,192,512])
+            };
+            const startRun=performance.now();
+            const outputs=await ses.run(inputs);
+            const wav=outputs.audio||outputs[ses.outputNames[0]];
+            console.log("WEB WASM ACTUAL AUDIO",wav.dims,wav.data.length,
+              "elapsed_ms",Math.round(performance.now()-startRun),
+              "minmax",[Math.min(...wav.data.slice(0,10000)),Math.max(...wav.data.slice(0,10000))]);
+            if(wav.data.length!==245760 || !wav.data.every(Number.isFinite))
+              throw Error("RVC generator output missing or nonfinite");
+            console.log("PASS: real downloaded RVC generator completed inference in ONNX Runtime Web WASM");
+            await ses.release();
+          })().catch(e=>{console.error("Real RVC WASM generator failure",e);process.exitCode=1});
+          JS
