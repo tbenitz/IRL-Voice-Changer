@@ -4,7 +4,10 @@
 (() => {
   "use strict";
   const $ = id => document.getElementById(id);
-  const HF_BASE = "https://huggingface.co/TigreGotico/voiceclonnx-rvc/resolve/main/";
+  // The former q8 exports contain ConvInteger, which ONNX Runtime Web WASM
+  // cannot initialize. Use browser-tested FP16 *weights* with FP32 I/O.
+  // Cache identity is tied to the exact file + graph format, not just the role.
+  const HF_BASE = "https://huggingface.co/ampixa/rvc-browser-runtime/resolve/main/";
   const HF_VOICE = "https://huggingface.co/ampixa/nepali-rvc-voices-v1/resolve/45908909e0e1b01ae45c8254ef939045d221b510/browser/";
   const voicePresets = Object.freeze({
     ne_rvc_m01: {label:"Male 01", file:"ne_rvc_m01.512.fp16.onnx"},
@@ -13,15 +16,15 @@
     ne_rvc_f02: {label:"Female 02",file:"ne_rvc_f02.512.fp16.onnx"}
   });
   const baseModels = [
-    {key:"contentvec-q8",kind:"contentVec",url:HF_BASE+"contentvec_768l12_q8.onnx",
-      filename:"contentvec_768l12_q8.onnx",minSize:80e6,maxSize:120e6},
-    {key:"rmvpe-q8",kind:"rmvpe",url:HF_BASE+"rmvpe_q8.onnx",
-      filename:"rmvpe_q8.onnx",minSize:80e6,maxSize:120e6}
+    {key:"contentvec-browser-fp16-v3",kind:"contentVec",url:HF_BASE+"contentvec.fp16.onnx",
+      filename:"contentvec.fp16.onnx",minSize:189437475,maxSize:189437475},
+    {key:"rmvpe-browser-fp16-v3",kind:"rmvpe",url:HF_BASE+"rmvpe.fp16.onnx",
+      filename:"rmvpe.fp16.onnx",minSize:181070368,maxSize:181070368}
   ];
   const local = new Map();
   let preparing = null;
   let controller = null;
-  const DB="irl-rvc-voice-models-v2", STORE="weights";
+  const DB="irl-rvc-voice-models-v3", STORE="weights";
   const progress = $("rvc-model-progress");
   const select = $("rvc-preset");
   const status = $("rvc-model-status");
@@ -60,7 +63,7 @@
         request.onsuccess=()=>resolve(request.result||null);
         request.onerror=()=>reject(request.error);
       });
-      if(item?.blob?.size){
+      if(item?.blob?.size && item.filename){
         const file=new File([item.blob],item.filename,{type:"application/octet-stream"});
         local.set(key,file);
         return file;
@@ -88,7 +91,7 @@
   }
   async function obtain(entry,number,total) {
     let file=await getCached(entry.key);
-    if(file && file.size>=entry.minSize && file.size<=entry.maxSize){
+    if(file && file.name===entry.filename && file.size>=entry.minSize && file.size<=entry.maxSize){
       report("Step "+number+"/"+total+": "+entry.filename+" loaded from browser cache.",(number/total)*100);
       return file;
     }
@@ -108,7 +111,7 @@
         chunks.push(part.value);
         downloaded+=part.value.byteLength;
         if(downloaded>entry.maxSize)throw new Error("ONNX download exceeded expected model size");
-        const share=(downloaded/Math.max(entry.minSize,entry.maxSize));
+        const share=(downloaded/entry.maxSize);
         report("Step "+number+"/"+total+": "+entry.filename+" — "+(downloaded/1e6).toFixed(1)+" MB",((number-1)+Math.min(1,share))/total*100);
       }
     }finally{reader.releaseLock();}
@@ -137,7 +140,7 @@
         ...(!custom&&chosen?[{key:"voice-"+requested,kind:"voice",url:HF_VOICE+chosen.file,
           filename:chosen.file,minSize:50e6,maxSize:70e6}]:[])
       ];
-      const files={...window.__IRL_RVC_prepared};
+      const files={}; // Never reuse already-prepared incompatible model objects from older pages
       const models=entries.length;
       for(let i=0;i<models;i++){
         const entry=entries[i];
@@ -156,6 +159,8 @@
       if(!files.voice && custom)files.voice=custom;
       if(!files.voice||!files.contentVec||!files.rmvpe)
         throw new Error("A required voice, ContentVec, or RMVPE ONNX file was not available.");
+      if(/_q8[.]onnx|_int8[.]onnx/i.test(files.contentVec.name)||/_q8[.]onnx|_int8[.]onnx/i.test(files.rmvpe.name))
+        throw new Error("Quantized q8 ContentVec/RMVPE models are incompatible with this browser runtime (ConvInteger). Remove the custom q8 file or use the built-in FP16 model.");
       window.__IRL_RVC_prepared=files;
       report("All three real ONNX models ready. Initializing neural RVC for microphone conversion…",100);
       return files;
