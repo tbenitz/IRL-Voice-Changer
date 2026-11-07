@@ -99,10 +99,28 @@ progress{width:100%;height:13px;accent-color:var(--mint)}
     <div class="stat"><b id="inference">—</b><span>Latest neural inference (ms)</span></div>
     <div class="stat"><b id="rtf">—</b><span>Real-time factor (under 1.0 is good)</span></div>
     <div class="stat"><b id="drops">0</b><span>Audio blocks dropped</span></div>
+    <div class="stat"><b id="wave-change">—</b><span>ONNX output waveform change vs microphone</span></div>
+    <div class="stat"><b id="wave-corr">—</b><span>Input/output waveform correlation (1.00 = near-identical)</span></div>
   </div>
   <p>Microphone input level</p><div class="bar"><i id="input-meter"></i></div>
   <p>Changed voice output level</p><div class="bar"><i id="output-meter"></i></div>
   <p id="performance-note">No benchmark measured yet.</p>
+  <p id="voice-change-note">Waveform change is measured from the actual ONNX output. This is NOT a speaker-identity score.</p>
+  <div style="border:1px solid #3a6976;border-radius:12px;padding:16px;margin-top:18px">
+    <strong>A/B recording test • actual model output</strong>
+    <p class="fine">With headphones on, click Capture while the model is LIVE and speak for 8 seconds. Two local WAV clips will let you compare the captured microphone with the exact PCM returned by the neural ONNX worker. Neither recording is automatically played or uploaded.</p>
+    <div class="actions"><button id="audit-start" class="secondary" type="button" disabled>Capture 8 seconds: mic vs ONNX</button></div>
+    <p id="audit-status" class="fine">Start a neural microphone model to enable the A/B test.</p>
+    <div id="audit-results" hidden>
+      <p><strong>A · Original microphone (only plays when you click Play)</strong></p>
+      <audio id="audit-source" controls preload="none" style="max-width:100%;width:100%"></audio>
+      <p><a id="audit-download-source" download="mic-original-16k.wav">Download original mic WAV</a></p>
+      <p><strong>B · Actual ONNX model output</strong></p>
+      <audio id="audit-output" controls preload="none" style="max-width:100%;width:100%"></audio>
+      <p><a id="audit-download-output" download="onnx-converted-16k.wav">Download neural output WAV</a></p>
+      <p class="fine">For the same spoken words, compare timbre and pitch. A numerical waveform difference alone does not establish a successful voice clone.</p>
+    </div>
+  </div>
   <div style="height:1px;background:#2d4b5e;margin:23px 0"></div>
   <span class="eyebrow">What model is this?</span>
   <p>The <b>13.7 MB built-in checkpoints</b> are causal LLVC-style streaming students trained from an RVC teacher, published by <a href="https://github.com/ultrapg/hevoicechanger" target="_blank" rel="noopener">HEVoicechanger</a> under GPL-3.0. It is genuine neural speech-to-speech conversion, but it is <strong>not</strong> an ordinary RVC checkpoint and cannot directly use most RVC voice downloads.</p>
