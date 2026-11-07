@@ -39,12 +39,11 @@ The separate RVC recording panel calls the same persistent-session local RVC v2 
 A new **experimental browser neural RVC microphone pipeline** is implemented at [Live AI RVC](live-vc/#rvc-live). It holds ContentVec, RMVPE, and RVC ONNX sessions in a persistent Web Worker, processes microphone blocks, displays lag and processing time, and mutes/drops audio rather than playing the original voice on failure. **This has passed static/synthetic tests but has not passed real model inference or end-to-end latency testing on an 8 GB Chromebook**; it may be too slow or unable to load the model. A 3-second MP3 is reference audio, not a trained RVC checkpoint; zero-shot reference conversion requires a separate compatible voice-conversion engine. The other requested neural engines have not been ported into the local browser and are not represented by embedded Hugging Face iframes. Pocket TTS is a separate text-to-speech experiment, **not voice conversion**.
 
 
-This repository combines a Windows desktop control center for five upstream neural VC engines, a browser live DSP voice changer, a local experimental RVC ONNX recording converter, and a separate Pocket TTS speech generator.
+This is a browser-only repository with live DSP and ONNX voice-changing experiments, a local experimental RVC converter, Pocket TTS generation and a small student-model training lab.
 
 Website: https://tbenitz.github.io/IRL-Voice-Changer/  
 **Try models online:** https://tbenitz.github.io/IRL-Voice-Changer/online-test/  
 Pocket TTS experiment: https://tbenitz.github.io/IRL-Voice-Changer/pocket-demo/  
-Portable Windows EXE: https://github.com/tbenitz/IRL-Voice-Changer/actions/workflows/windows.yml  
 All build runs: https://github.com/tbenitz/IRL-Voice-Changer/actions
 
 ## Try before installing — online model lab
@@ -74,51 +73,13 @@ Pocket generation is local in the browser, but the speech recognition part may u
 
 The [Pages workflow](.github/workflows/pages.yml) now validates and deploys the committed Pocket files rather than overwriting the fixed copy during deployment.
 
-## Download and start
+## Browser-only project — no Windows EXE
 
-1. Go to **Actions → Build Windows portable EXE → latest successful run → Artifacts** and download **IRL-Voice-Changer-Windows-x64**. Extract its EXE.
-2. Run the EXE on Windows x64. No separate Python installation is necessary *for the launcher itself*.
-3. Pick an engine from the left and select **Set up engine**. The launcher downloads the chosen official upstream source and uses Astral uv to provision the required Python version in its own local environment. These installations can be several gigabytes.
-4. Click **Start engine**. Choose microphone, output device, and the voice/model inside the original engine's window (or through the explicit input/reference controls in this launcher).
-5. For Discord, OBS or a game, route the engine's converted audio to a virtual audio device, which needs to be installed separately. For IRL speakers, route audio to a speaker in the upstream engine. Use headphones for testing to prevent feedback.
+This repository builds the GitHub Pages site: a real streaming ONNX voice changer, a Pocket TTS browser studio, and an experimental synthetic-speech dataset / custom student trainer. **It does not build, embed, or generate Windows executables.** Your separate Windows voice-cloning projects remain independent.
 
-If you prefer running the control center from source, it uses the Python standard library:
+In the [Fast Neural studio](https://tbenitz.github.io/IRL-Voice-Changer/live-vc/fast-voice.html), **Saved trained ONNX** automatically reads the latest experimental Pocket export from this browser’s IndexedDB. **Import ONNX file** is for manually selecting a compatible trained model from Chromebook Downloads. Select one method, not both. For slower Chromebook hardware, microphone chunks default to **512 ms**, with a corresponding latency penalty. An identity-similarity safety guard mutes experimental near-unchanged mic output rather than presenting it as a converted voice.
 
-    python hub.py
-
-Settings and upstream engines are saved under the user-local IRLVoiceChanger data directory (on Windows, %LOCALAPPDATA%\IRLVoiceChanger).
-
-## What each model actually does
-
-| Engine | Real upstream launch | Input/reference | Live microphone conversion? |
-| --- | --- | --- | --- |
-| [Beatrice v2](https://github.com/w-okada/voice-changer) | Download official VCClient desktop version and select its EXE | Compatible Beatrice voice model via VCClient | **Yes** |
-| [RVC](https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI) | Python 3.12 isolated environment, realtime_gui.py | RVC .pth voice model, optional .index, HuBERT and RMVPE weights | **Yes** |
-| [Seed-VC Realtime](https://github.com/jiaheguo521/seed-vc-realtime) | Python 3.10 isolated environment, real-time-gui.py | Reference recording in upstream GUI; default model may download automatically | **Yes, but delayed; GPU recommended** |
-| [LLVC](https://github.com/KoeAI/LLVC) | Python 3.11 venv; packaged experimental microphone adapter, or official infer.py -s file mode | Pretrained checkpoint downloaded at setup; select live mic or file in hub | **Yes via new experimental adapter; file option too** |
-| [MeanVC2](https://github.com/ASLP-lab/MeanVC2) | Python 3.11 isolated environment, runtime/run_rt.py with --mode realtime | Reference target-speaker WAV; model setup downloads checkpoints | **Yes, experimental** |
-
-**Scope:** The application is a common **installation, launch and control center** for the real upstream engines. They do NOT share one unified low-level inference pipeline: each engine has its own model format, voice management and audio device implementation. No button fabricates converted audio. An engine must be installed and correctly configured before it can produce a transformed voice.
-
-### Engine-specific instructions
-
-**Beatrice v2:** Select Official download, choose a suitable edition from the developer's [VCClient downloads](https://huggingface.co/wok000/vcclient000/tree/main), unzip it and select the program's EXE through the hub. The author provides prebuilt clients; this hub intentionally does not pretend to compile or automatically package Beatrice.
-
-**RVC:** Set up installs the upstream source and its dependencies, but the upstream README requires separate HuBERT and RMVPE model assets. You must download those assets into the layout specified in [RVC's README](https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI), then import a licensed voice model through its real-time GUI. There are CPU and CUDA setup choices; the initial NVIDIA preset is CUDA 11.8 for pre-RTX-50 cards. RTX 50 cards require upstream CUDA 12.8 adjustments.
-
-**Seed-VC:** Set up installs the upstream environment. Starting its GUI may fetch the official default checkpoint/config. Select a reference audio and configure microphone and speaker in its own UI. Real-time voice conversion requires a suitable GPU for practical latency.
-
-**LLVC:** By default the hub runs the bundled experimental llvc_live.py microphone adapter, which calls the genuine upstream model with persistent streaming buffers in a dedicated inference thread (not a pitch-shift placebo). It uses your system's default audio devices at 16 kHz. Results depend on CPU speed and hardware; underruns are logged. For the official upstream file converter, uncheck LLVC live microphone mode, browse an audio file and output folder, and start. The upstream infer.py itself remains file-only.
-
-**MeanVC2:** Set up runs the upstream initialization script to fetch checkpoints. Supply a target-speaker WAV, select the 40ms or 120ms model, choose CPU/CUDA, and launch. MeanVC2's runtime uses the system-default input/output devices.
-
-### Technical and hardware cautions
-
-- The launcher uses [Astral uv](https://docs.astral.sh/uv/) to download isolated Python runtimes. Installing uv and model weights requires internet access and runs third-party code from official sources.
-- The EXE contains only the launcher; it does NOT include all five PyTorch runtimes, GPU drivers, weights, voice packs or virtual audio cable drivers.
-- Some upstream requirements may need manual adjustment for your GPU, Windows build or hardware. A successful Python dependency installation does not prove a model runs.
-- Every engine has a different expected checkpoint. A Pocket TTS voice profile cannot simply be imported as an RVC or Beatrice model.
-- The app shows upstream logs and errors instead of silently using a fallback fake voice.
+In the [Pocket Custom Voice Trainer](https://tbenitz.github.io/IRL-Voice-Changer/pocket-demo/studio/#pocket-trainer), choose one of your saved custom Pocket voices as the **target** (or use a newly recorded/uploaded voice), choose a different source speaker, and press **Generate / resume**. It automatically synthesizes paired WAV files: **no manual preview and no MP3 export are required.** Local speech model quality is experimental; independent TTS renditions are not correctly aligned teacher–student training data.
 
 ## Pocket TTS HTML: microphone → real synthesized voice
 
@@ -131,27 +92,15 @@ The separate [pocket-demo/index.html](pocket-demo/index.html) is a turn-by-turn 
 
 Pocket synthesis runs in-browser, but the microphone recognition stage uses the browser's Web Speech API, which **may process speech online** depending on browser and OS. This is not a fully local live microphone converter. It must recognize an utterance before the TTS engine generates a new one. This changes the vocal identity but not the user's exact vocal timing, emotion or pitch contours.
 
-For a fully local speech-to-text frontend, the original Windows Pocket project has a Whisper option. The demonstration is a **separate HTML page** that relies on same-origin Pocket assets; opening the file directly from the computer without the source app files will not work.
+The demonstration is a **browser page** relying on same-origin Pocket assets; opening it directly from disk without its source assets will not work.
 
 **Chromebook limitations:** The Pocket ONNX TTS engine is genuine CPU/WebAssembly inference and can run inside ChromeOS without installing Windows or Python. Its on-device performance is not guaranteed on every 8 GB system. Beatrice, RVC, Seed-VC and MeanVC2 use third-party hosted preview pages from the [model lab](online-test/), while LLVC currently offers listening samples only; the GitHub Pages site does not run those five engines locally.
 
 ## GitHub Actions and deployment
 
-- [Windows build workflow](.github/workflows/windows.yml) validates the Python adapters and produces a portable EXE as an Actions artifact.
-- [Pages workflow](.github/workflows/pages.yml) publishes this website and the genuine Pocket studio assets from a pinned commit in the existing Pocket repository.
-- To enable the site, go to **Settings → Pages → Build and deployment → Source: GitHub Actions**. If the initial Pages workflow fails because the site is not enabled, set this and then re-run the deployment workflow.
-
-Build the EXE locally (Windows Python):
-
-    python -m pip install pyinstaller
-    pyinstaller --onefile --windowed --add-data "llvc_live.py;." --name IRL-Voice-Changer hub.py
-
-Run source-level tests:
-
-    python -m unittest discover -s tests -v
-    python -m compileall -q hub.py engines.py llvc_live.py
-
-**Testing scope:** GitHub Actions can test code and compile a Windows executable. It cannot test your actual sound devices, graphics driver, low-latency audio behavior or whether a licensed model weight file is present. A real Windows PC is required for those tests.
+- [Pages workflow](.github/workflows/pages.yml) publishes the site and checks browser modules.
+- [Pocket student validation](.github/workflows/pocket-student-validation.yml) checks real TFJS training and ONNX Runtime Web inference, but cannot verify voice identity or Chromebook WebGPU performance.
+- No Windows executable workflow or Windows launcher is included.
 
 ## Credits, licenses and voice consent
 
