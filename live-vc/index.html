@@ -99,7 +99,7 @@ h3{font-size:15px;margin:0 0 9px}
     <p>This mode feeds microphone blocks to a <strong>persistent, on-device RVC v2 ONNX worker</strong>. It uses real ContentVec features, RMVPE pitch tracking, and a trained RVC generator. Unlike Pocket TTS or the DSP presets above, the voice identity comes from your actual RVC model. Processing delay may be severe on 8 GB ChromeOS and has not been hardware-verified.</p>
     <div class="rvc-info" style="border-color:#4db1a1;background:#12353b">
       <strong>One-click model setup · no files to find</strong>
-      <p style="margin:5px 0 11px">Choose a trained RVC voice and press Start below. The site downloads that checkpoint and the required ContentVec and RMVPE models, then connects your microphone. First download is around 250 MB.</p>
+      <p style="margin:5px 0 11px">Choose a trained RVC voice and press Start below. The site downloads that checkpoint and the required ContentVec and RMVPE models, then connects your microphone. First download is about 430 MB. The previous smaller Q8 models were incompatible with browser WASM; the site now uses browser-compatible FP16 weights.</p>
       <label for="rvc-preset" style="display:block;font-size:12px;font-weight:800">Built-in voice</label>
       <select id="rvc-preset" style="display:block;width:100%;margin:6px 0 10px;background:#0b1e2a;color:#eaffff;border:1px solid #4a8c8a;border-radius:10px;padding:11px">
         <option value="ne_rvc_m01">Male 01 — RVC v2 48 kHz</option>
@@ -110,7 +110,7 @@ h3{font-size:15px;margin:0 0 9px}
       </select>
       <progress id="rvc-model-progress" value="0" max="100" hidden style="width:100%;accent-color:#63e2d2"></progress>
       <div id="rvc-model-status" aria-live="polite" style="font-size:12px;color:#b1dcd8">Weights download only when selected and are cached in this browser when storage permits. Audio inference stays on device.</div>
-      <p style="margin:9px 0 0;font-size:11px">Built-in voices: <a href="https://huggingface.co/ampixa/nepali-rvc-voices-v1" target="_blank" rel="noopener">Ampixa Labs</a> (CC BY 4.0, trained on IndicVoices-R). They were trained on Nepali speech, so English quality can vary. Base models: <a href="https://huggingface.co/TigreGotico/voiceclonnx-rvc" target="_blank" rel="noopener">TigreGotico voiceclonnx</a> (MIT).</p>
+      <p style="margin:9px 0 0;font-size:11px">Built-in voices: <a href="https://huggingface.co/ampixa/nepali-rvc-voices-v1" target="_blank" rel="noopener">Ampixa Labs</a> (CC BY 4.0, trained on IndicVoices-R). They were trained on Nepali speech, so English quality can vary. Browser-compatible base models: <a href="https://huggingface.co/ampixa/rvc-browser-runtime" target="_blank" rel="noopener">Ampixa RVC FP16</a> (GPL-3.0).</p>
     </div>
     <div class="actions">
       <label style="font-size:12px">Microphone block
@@ -142,12 +142,12 @@ h3{font-size:15px;margin:0 0 9px}
     <div class="rvc-grid">
       <label class="file-input"><b>Optional · Upload your own trained RVC checkpoint</b><small>Compatible RVC v2 ONNX; built-in voices above require no uploads.</small><input id="rvc-model" type="file" accept=".onnx"></label>
       <label class="file-input"><b>2 · Speech to convert</b><small>MP3/WAV recording; 3–10 seconds recommended for 8 GB Chromebook</small><input id="rvc-audio" type="file" accept="audio/*"></label>
-      <label class="file-input"><b>3 · ContentVec model</b><small>ONNX feature extractor; can download on demand (~95 MB Q8 version)</small><input id="rvc-vec" type="file" accept=".onnx"></label>
-      <label class="file-input"><b>4 · RMVPE model</b><small>ONNX pitch estimator; can download on demand (~99 MB Q8 version)</small><input id="rvc-pitch" type="file" accept=".onnx"></label>
+      <label class="file-input"><b>3 · ContentVec model</b><small>Browser-compatible ContentVec FP16 (~189 MB). Avoid Q8 / ConvInteger.</small><input id="rvc-vec" type="file" accept=".onnx"></label>
+      <label class="file-input"><b>4 · RMVPE model</b><small>Browser-compatible RMVPE FP16 (~181 MB). Avoid Q8 / ConvInteger.</small><input id="rvc-pitch" type="file" accept=".onnx"></label>
     </div>
     <div class="rvc-info"><strong>Want a voice model to try?</strong> <a href="https://huggingface.co/ampixa/nepali-rvc-voices-v1/tree/main/browser" target="_blank" rel="noopener">Licensed experimental RVC ONNX voice packs</a> are available. Compatibility with this runtime is unverified. RVC models are speaker-specific; importing a reference MP3 alone does not train one. The common models are large and may exceed an 8 GB browser's available memory.</div>
     <div class="actions">
-      <button type="button" class="secondary" id="get-core">Download quantized ContentVec + RMVPE (~194 MB)</button>
+      <button type="button" class="secondary" id="get-core">Download compatible ContentVec + RMVPE (~370 MB)</button>
       <label style="font-size:12px;color:var(--muted)">Pitch <select id="rvc-shift" style="background:#162e43;color:var(--txt);border:1px solid #3a5a6d;border-radius:9px;padding:10px"><option value="0">0 semitones</option><option value="-5">−5 semitones</option><option value="5">+5 semitones</option><option value="-12">−12 semitones</option><option value="12">+12 semitones</option></select></label>
       <button class="primary" type="button" id="rvc-run">Test selected voice (first 3 sec)</button>
       <button class="secondary" type="button" id="rvc-cancel" disabled>Cancel test</button>
@@ -284,35 +284,17 @@ window.__IRL_RVC_getModels = () => ({
  busy: RUNTIME.busy || Boolean(window.__IRL_RVC_clipBusy),
 });
 
-const CV_URL="https://huggingface.co/TigreGotico/voiceclonnx-rvc/resolve/main/contentvec_768l12_q8.onnx";
-const F0_URL="https://huggingface.co/TigreGotico/voiceclonnx-rvc/resolve/main/rmvpe_q8.onnx";
+// One shared compatible loader for both live RVC and recording previews.
+// Do not fetch the older Q8 models here; ConvInteger is unsupported in browser WASM.
 function note(message,bad=false){$("rvc-status").textContent=message;$("rvc-status").style.color=bad?"#ffb2ba":"#c3dee9";}
-async function downloadModel(url,filename,which){
- const response=await fetch(url);
- if(!response.ok)throw Error(filename+" download returned HTTP "+response.status);
- const size=Number(response.headers.get("content-length")||0);
- if(size>135e6)throw Error(filename+" is larger than expected");
- const reader=response.body?.getReader();
- if(!reader)throw Error("Streaming response unavailable for "+filename);
- const parts=[];let read=0;
- for(;;){
-  const {done,value}=await reader.read();
-  if(done)break;
-  parts.push(value);read+=value.byteLength;
-  if(read>135e6)throw Error(filename+" exceeded 135 MB; stopped to protect memory");
-  note("Downloading "+filename+": "+(read/1e6).toFixed(1)+" MB"+(size?" / "+(size/1e6).toFixed(1)+" MB":"")+". Inference stays on this device.");
- }
- const file=new File(parts,filename,{type:"application/octet-stream"});
- RUNTIME[which]=file;return file;
-}
 $("get-core").addEventListener("click",async()=>{
- if(RUNTIME.busy)return;
+ if(RUNTIME.busy||window.__IRL_RVC_clipBusy)return;
  RUNTIME.busy=true;$("get-core").disabled=true;$("rvc-run").disabled=true;
  try{
-  if(!$("rvc-vec").files?.length)await downloadModel(CV_URL,"contentvec_768l12_q8.onnx","vec");
-  if(!$("rvc-pitch").files?.length)await downloadModel(F0_URL,"rmvpe_q8.onnx","pitch");
-  note("ContentVec and RMVPE downloaded to browser memory. Choose a compatible RVC ONNX checkpoint and source recording.");
- }catch(e){note("Model download failed: "+e.message+". Upload the ONNX assets manually instead.",true)}
+  note("Downloading the verified browser-compatible FP16 RVC base models and selected voice…");
+  await window.__IRL_RVC_prepareModels();
+  note("Browser-compatible FP16 ContentVec, RMVPE and selected voice are ready and cached where space permits.");
+ }catch(e){note("Compatible model setup failed: "+(e?.message||e),true)}
  finally{RUNTIME.busy=false;$("get-core").disabled=false;$("rvc-run").disabled=false}
 });
 async function pcm16k(file) {
@@ -336,7 +318,7 @@ async function pcm16k(file) {
 
 })();
 </script>
-<script defer src="./model-presets.js?v=20261106-auto1"></script>
-<script defer src="./rvc-clip-ui.js?v=20261106-clip1"></script>
-<script defer src="./rvc-live-ui.js?v=20261106-auto1"></script>
+<script defer src="./model-presets.js?v=20261106-fp16-v2"></script>
+<script defer src="./rvc-clip-ui.js?v=20261106-fp16-v2"></script>
+<script defer src="./rvc-live-ui.js?v=20261106-fp16-v2"></script>
 </body></html>
