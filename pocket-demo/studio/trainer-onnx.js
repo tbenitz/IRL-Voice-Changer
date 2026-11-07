@@ -25,8 +25,8 @@ function tensor(name,dims,data){
  return child(5,[...dims.map(x=>vi(1,x)),vi(2,1),txt(8,name),bytes(9,raw)]);
 }
 function attrInts(name,values){return child(5,[txt(1,name),...values.map(v=>vi(8,v)),vi(20,7)])}
-function node(type,ins,outs,pads=null,dilation=1){
- return child(1,[...ins.map(x=>txt(1,x)),...outs.map(x=>txt(2,x)),txt(4,type),...(pads===null?[]:[attrInts("pads",[pads,0]),attrInts("dilations",[dilation])])]);
+function node(type,ins,outs,padSide=null,dilation=1){
+ return child(1,[...ins.map(x=>txt(1,x)),...outs.map(x=>txt(2,x)),txt(4,type),...(padSide===null?[]:[attrInts("pads",[padSide,padSide]),attrInts("dilations",[dilation])])]);
 }
 function convWeights(w){
  // TFJS Conv1D kernel [kernel, input_ch, output_ch] to ONNX
@@ -52,11 +52,11 @@ async function exportCausalOnnx(tfModel,metadata={}){
  }
  const g=[txt(2,"pocket-streaming-timbre-experiment")];
  const graphNodes=[
-  node("Conv",["audio_in","W1","B1"],["c1"],(weights[0].kernel.k-1)*1,1),
+  node("Conv",["audio_in","W1","B1"],["c1"],(weights[0].kernel.k-1)*1/2,1),
   node("Tanh",["c1"],["a1"]),
-  node("Conv",["a1","W2","B2"],["c2"],(weights[1].kernel.k-1)*4,4),
+  node("Conv",["a1","W2","B2"],["c2"],(weights[1].kernel.k-1)*4/2,4),
   node("Tanh",["c2"],["a2"]),
-  node("Conv",["a2","W3","B3"],["c3"],(weights[2].kernel.k-1)*16,16),
+  node("Conv",["a2","W3","B3"],["c3"],(weights[2].kernel.k-1)*16/2,16),
   node("Tanh",["c3"],["a3"]),
   node("Conv",["a3","W4","B4"],["c4"],0),
   node("Add",["c4","audio_in"],["residual"]),
