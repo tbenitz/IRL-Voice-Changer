@@ -16,7 +16,13 @@ class StudioSmokeTests(unittest.TestCase):
                       "runtime-detail", "model-progress", "model-ready-indicator"):
             self.assertIn(f'id="{ident}"', html)
         self.assertIn('href="../../online-test/"', html)
-        self.assertIn('src="app.js?v=20261106-cb1"', html)
+        self.assertRegex(html, r'src="app[.]js[?]v=[^"]+"')
+        self.assertIn('trainer-addon.js?', html)
+        self.assertIn('studio-addon.js?', html)
+        # Cache-busted main Pocket controller must include silent batch handling.
+        app = (STUDIO / "app.js").read_text(encoding="utf-8")
+        self.assertIn('this.silentBatchMode = false', app)
+        self.assertIn('if (!this.silentBatchMode) this.player.playAudio(pcm)', app)
 
     def test_workload_is_opt_in_and_uses_real_onnx(self):
         app = (STUDIO / "app.js").read_text(encoding="utf-8")
