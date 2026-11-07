@@ -53,7 +53,7 @@ panel.innerHTML=[
  '<div id="trainer-status" class="status" role="status" aria-live="polite">Load Pocket above, clone a voice below and click Generate.</div>',
  '<div class="sub"><span class="ey">WebGPU neural student • Automatic ONNX</span>',
  '<h3 style="font-size:22px">Train locally and export a model</h3>',
- '<p>After saving four or more paired sentences, run real WebGPU gradient updates on a small causal Conv1D network. The exported ONNX file has <code>audio_in → audio_out</code> and is checked with ONNX Runtime Web before being saved. This is not yet an LLVC-quality or verified speaker conversion pipeline.</p>',
+ '<p>For lower memory use on an 8 GB Chromebook, you can refresh this page after generating the dataset and train without reloading the 200 MB Pocket model. Saved pairs remain in browser storage.</p><p>After saving four or more paired sentences, run real WebGPU gradient updates on a small causal Conv1D network. The exported ONNX file has <code>audio_in → audio_out</code> and is checked with ONNX Runtime Web before being saved. This is not yet an LLVC-quality or verified speaker conversion pipeline.</p>',
  '<label class="check"><input type="checkbox" id="trainer-cpu" checked><span>Permit slower CPU training if WebGPU is unavailable or unsupported.</span></label>',
  '<div class="actions"><button id="trainer-train" class="primary">Train locally and auto-export ONNX</button>',
  '<button id="trainer-stop-training" disabled>Stop training after current step</button>',
@@ -93,7 +93,14 @@ function waitFor(type,trigger,match=null,timeoutMs=360000){
    reject(Error("Pocket "+type+" response timed out"));
   },timeoutMs);
   pending={type,resolve,reject,match,timer};
-  try{trigger()}catch(e){pending=null;clearTimeout(timer);reject(e)}
+  try{
+   const command=trigger();
+   // app.generate() does asynchronous AudioContext/worklet setup before
+   // posting to the worker. Propagate failures immediately, not in six minutes.
+   if(command && typeof command.catch==="function")command.catch(e=>{
+    if(pending?.resolve===resolve){pending=null;clearTimeout(timer);reject(e)}
+   });
+  }catch(e){pending=null;clearTimeout(timer);reject(e)}
  });
 }
 function rejectPending(){
