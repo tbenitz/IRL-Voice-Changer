@@ -11,6 +11,7 @@ on:
       - "tests/test_live_voice.cjs"
       - "tests/test_rvc_live.cjs"
       - "tests/test_rvc_pipeline_stub.cjs"
+      - "tests/test_fast_voice.cjs"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 permissions:
@@ -44,6 +45,10 @@ jobs:
           test -f live-vc/rvc-live-ui.js
           test -f live-vc/model-presets.js
           test -f live-vc/rvc-clip-ui.js
+          test -f live-vc/fast-voice.html
+          test -f live-vc/fast-voice.js
+          test -f live-vc/fast-voice-worker.js
+          test -f live-vc/fast-mic-worklet.js
           test -f pocket-demo/index.html
           test -f pocket-demo/diagnostics.html
           test -f pocket-demo/studio/index.html
@@ -60,9 +65,13 @@ jobs:
           node --check live-vc/rvc-live-ui.js
           node --check live-vc/model-presets.js
           node --check live-vc/rvc-clip-ui.js
+          node --check live-vc/fast-voice.js
+          node --check live-vc/fast-voice-worker.js
+          node --check live-vc/fast-mic-worklet.js
           node tests/test_live_voice.cjs
           node tests/test_rvc_live.cjs
           node tests/test_rvc_pipeline_stub.cjs
+          node tests/test_fast_voice.cjs
           node --check pocket-demo/studio/pocket-mic-addon.js
           node --check pocket-demo/studio/inference-worker.js
           node --input-type=module --check < pocket-demo/studio/app.js
