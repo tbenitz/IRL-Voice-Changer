@@ -13,7 +13,7 @@ jobs:
     steps:
       - name: Install CPU ONNX inference runtime
         run: |
-          python -m pip install --quiet --disable-pip-version-check "onnxruntime==1.24.4" "numpy<3"
+          python -m pip install --quiet --disable-pip-version-check "onnxruntime==1.24.4" "onnx>=1.19" "numpy<3"
       - name: Download exact ContentVec and built-in voice ONNX models
         run: |
           set -euo pipefail
@@ -39,9 +39,15 @@ jobs:
           cv=ort.InferenceSession("/tmp/contentvec.onnx",sess_options=opt,providers=["CPUExecutionProvider"])
           print("CONTENTVEC INPUTS",[(x.name,x.shape,x.type) for x in cv.get_inputs()],flush=True)
           print("CONTENTVEC OUTPUTS",[(x.name,x.shape,x.type) for x in cv.get_outputs()],flush=True)
-          voice=ort.InferenceSession("/tmp/voice.onnx",sess_options=opt,providers=["CPUExecutionProvider"])
-          print("RVC GENERATOR INPUTS",[(x.name,x.shape,x.type) for x in voice.get_inputs()],flush=True)
-          print("RVC GENERATOR OUTPUTS",[(x.name,x.shape,x.type) for x in voice.get_outputs()],flush=True)
+          # Inspect generator graph without loading it into newer CPU ORT:
+          # this FP16 voice has an unrelated Cast graph rewrite issue in ORT 1.24.
+          import onnx
+          voice=onnx.load("/tmp/voice.onnx",load_external_data=False)
+          def dims(t):
+              ds=t.type.tensor_type.shape.dim
+              return [d.dim_value if d.HasField("dim_value") else d.dim_param for d in ds]
+          print("RVC GENERATOR INPUTS",[(x.name,dims(x)) for x in voice.graph.input],flush=True)
+          print("RVC GENERATOR OUTPUTS",[(x.name,dims(x)) for x in voice.graph.output],flush=True)
           n=16000
           audio=(np.sin(np.arange(n,dtype=np.float32)*np.float32(2*np.pi*220/16000))*.12).astype("float32")
           feeds={}
@@ -58,7 +64,7 @@ jobs:
           for desc,arr in zip(cv.get_outputs(), result):
               print("CONTENTVEC ACTUAL",desc.name,"shape=",arr.shape,"dtype=",arr.dtype,
                   "range=",np.nanmin(arr),np.nanmax(arr),flush=True)
-          expected=next((i.shape[-1] for i in voice.get_inputs() if i.name=="phone"),None)
+          expected=next((dims(i)[-1] for i in voice.graph.input if i.name=="phone"),None)
           assert expected in (768,256),f"Unexpected generator phone dimension {expected}"
           matching=[(desc.name,arr.shape) for desc,arr in zip(cv.get_outputs(),result)
                     if arr.ndim==3 and expected in arr.shape[1:]]
