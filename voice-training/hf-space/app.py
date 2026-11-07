@@ -351,8 +351,8 @@ with gr.Blocks(title="Custom Neural Voice Trainer") as demo:
         + ("A writable /data volume is being used for jobs and model caches. "
            if WORKSPACE == Path("/data") else
            "**Temporary storage** — pausing, stopping or rebuilding the Space "
-           "can erase saved pairs and models. Attach a read-write Storage Bucket "
-           "at /data before starting a paid training run. ")
+           "can erase saved pairs and models. Download the completed files "
+           "before stopping the Space; no additional storage purchase is required. ")
         + "PTH is available when a training checkpoint finishes saving; "
           "ONNX becomes available after export validation. "
           "No ZIP is created or required. "
@@ -360,4 +360,5 @@ with gr.Blocks(title="Custom Neural Voice Trainer") as demo:
     )
 
 demo.queue(default_concurrency_limit=1, max_size=4)
-demo.launch(server_name="0.0.0.0", server_port=7860, max_file_size="4gb")
+demo.launch(server_name="0.0.0.0", server_port=7860, max_file_size="4gb",
+            allowed_paths=[str(JOBS)])
