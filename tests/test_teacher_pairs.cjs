@@ -23,6 +23,14 @@ async function bad(files,pattern){
  assert.equal(p.length,1);assert.equal(p[0].source.size,44+originals.length*2);
  assert.equal(p[0].target.size,44+converted.length*2);
  assert(p[0].relativeDifference>.015);
+ const src40=signal(80000,170),target40=signal(80000,240);
+ const high=await T.prepareFiles([
+  Object.assign(D.wav(src40,40000),{name:"40k_original.wav"}),
+  Object.assign(D.wav(target40,40000),{name:"40k_converted.wav"})
+ ],D.decodeWav,pcm=>D.wav(pcm));
+ assert.equal(high[0].length,32000,"Native 40 kHz RVC teacher clips must resample to 16 kHz locally");
+ assert.equal(high[0].source.size,44+32000*2);
+ assert.equal(high[0].target.size,44+32000*2);
  await bad([file("clip_original.wav",originals)],/lacks/);
  await bad([file("clip_original.wav",originals),
   file("clip_converted.wav",signal(24000,240))],/mismatched durations/);
