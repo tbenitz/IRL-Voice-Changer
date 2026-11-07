@@ -1,0 +1,34 @@
+name: Custom neural voice training source checks
+on:
+  push:
+    paths:
+      - "voice-training/**"
+      - "pocket-demo/studio/full-voice-builder.js"
+      - ".github/workflows/voice-training-syntax.yml"
+  workflow_dispatch:
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Check Python training programs
+        run: |
+          python -m py_compile voice-training/generate_teacher_pairs.py voice-training/train_full_llvc.py
+      - name: Check notebook structure and execution commands
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          notebook=json.loads(Path('voice-training/train_real_voice.ipynb').read_text())
+          assert notebook['nbformat']==4
+          assert len(notebook['cells'])>=8
+          script="\n".join("".join(c.get('source',[])) for c in notebook['cells'])
+          for required in ["files.upload()", "generate_teacher_pairs.py", "train_full_llvc.py", "files.download"]:
+              assert required in script, required
+          print("Notebook source valid; GPU execution still requires a live runtime")
+          PY
+      - name: Check studio entry script
+        run: node --check pocket-demo/studio/full-voice-builder.js
