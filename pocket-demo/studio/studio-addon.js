@@ -9,7 +9,7 @@
   const PCM_RATE = 24000;
   const container = document.querySelector("#app .container");
   if (!container) throw new Error("Upstream Pocket Voice layout changed.");
-  const result = await fetch("./studio-ui.html");
+  const result = await fetch("./studio-ui.html?v=20261107-no-exe-v3",{cache:"no-store"});
   if (!result.ok) throw new Error("Studio download and playback panel missing.");
   container.insertAdjacentHTML("beforeend", await result.text());
   const el = id => document.getElementById(id);
