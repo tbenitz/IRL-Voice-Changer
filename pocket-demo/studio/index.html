@@ -76,7 +76,7 @@
   Pocket TTS generates speech from text; it is <strong>not</strong> a real-time voice changer.
   <a href="../../live-vc/" style="color:#6df7dc;text-decoration:underline;margin-left:9px">Open the actual live microphone voice changer</a>
 </div>
-<header class="studio-nav"><a class="studio-logo" href="#hero"><span class="logo-mark">◉</span> POCKET<span>STUDIO</span></a><nav aria-label="Navigation"><a href="../../online-test/">All voice models</a><a href="#app">Voice creator</a><a href="#pocket-trainer">Custom voice trainer</a><a href="#studio-experience">Replay and exports</a><a href="#download-suite">Windows software</a></nav></header>
+<header class="studio-nav"><a class="studio-logo" href="#hero"><span class="logo-mark">◉</span> POCKET<span>STUDIO</span></a><nav aria-label="Navigation"><a href="../../online-test/">All voice models</a><a href="#app">Voice creator</a><a href="#pocket-trainer">Custom voice trainer</a><a href="#studio-experience">Replay and exports</a></nav></header>
 
 <div class="grain" aria-hidden="true"></div>
 
@@ -119,7 +119,7 @@
   <div class="container">
     <header class="app-section__header">
       <h2 class="app-section__title">Make your voice.</h2>
-      <p class="app-section__sub">Step 1: Upload or record. Step 2: Generate, listen, replay and export. Step 3: Choose your Windows application.</p>
+      <p class="app-section__sub">Step 1: Choose a saved voice or upload a clip. Step 2: Generate synthetic training pairs automatically. Step 3: Train a browser model and export ONNX. WAV/MP3 preview is optional.</p>
     </header>
 
     <section class="device-setup" id="model-setup" aria-labelledby="model-setup-title">
@@ -290,11 +290,11 @@
 <script src="main-thread-worker-shim.js?v=2.0.9"></script>
 <script type="module" src="app.js?v=20261106-cb1"></script>
 <script src="./vendor/lame.min.js"></script>
-<script type="module" src="./studio-addon.js?v=20261106-cb1"></script>
-<script defer src="./trainer-data.js?v=20261106-voice-train-v4"></script>
-<script defer src="./trainer-onnx.js?v=20261106-voice-train-v4"></script>
-<script defer src="./trainer-webgpu.js?v=20261106-voice-train-v4"></script>
-<script type="module" src="./trainer-addon.js?v=20261106-voice-train-v4"></script>
+<script type="module" src="./studio-addon.js?v=20261107-no-exe-v2"></script>
+<script defer src="./trainer-data.js?v=20261107-voice-train-v5"></script>
+<script defer src="./trainer-onnx.js?v=20261107-voice-train-v5"></script>
+<script defer src="./trainer-webgpu.js?v=20261107-voice-train-v5"></script>
+<script type="module" src="./trainer-addon.js?v=20261107-voice-train-v5"></script>
 <script src="./pocket-mic-addon.js?v=20261106-cb1" defer></script>
 </body>
 </html>
