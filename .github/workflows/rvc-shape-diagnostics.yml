@@ -21,7 +21,10 @@ jobs:
             "https://huggingface.co/ampixa/rvc-browser-runtime/resolve/main/contentvec.fp16.onnx"
           curl -fLSs --retry 3 --max-time 360 -o /tmp/voice.onnx \
             "https://huggingface.co/ampixa/nepali-rvc-voices-v1/resolve/45908909e0e1b01ae45c8254ef939045d221b510/browser/ne_rvc_m01.512.fp16.onnx"
-          wc -c /tmp/contentvec.onnx /tmp/voice.onnx
+          curl -fLSs --retry 3 --max-time 360 -o /tmp/rmvpe.onnx \
+            "https://huggingface.co/ampixa/rvc-browser-runtime/resolve/main/rmvpe.fp16.onnx"
+          wc -c /tmp/contentvec.onnx /tmp/voice.onnx /tmp/rmvpe.onnx
+          test "$(wc -c < /tmp/rmvpe.onnx)" -eq 181070368
           test "$(wc -c < /tmp/contentvec.onnx)" -eq 189437475
       - name: Run actual ContentVec ONNX and print exact output axes
         run: |
@@ -48,6 +51,9 @@ jobs:
               return [d.dim_value if d.HasField("dim_value") else d.dim_param for d in ds]
           print("RVC GENERATOR INPUTS",[(x.name,dims(x)) for x in voice.graph.input],flush=True)
           print("RVC GENERATOR OUTPUTS",[(x.name,dims(x)) for x in voice.graph.output],flush=True)
+          rm=onnx.load("/tmp/rmvpe.onnx",load_external_data=False)
+          print("RMVPE INPUTS",[(x.name,dims(x)) for x in rm.graph.input],flush=True)
+          print("RMVPE OUTPUTS",[(x.name,dims(x)) for x in rm.graph.output],flush=True)
           n=16000
           audio=(np.sin(np.arange(n,dtype=np.float32)*np.float32(2*np.pi*220/16000))*.12).astype("float32")
           feeds={}
@@ -70,4 +76,7 @@ jobs:
                     if arr.ndim==3 and expected in arr.shape[1:]]
           print("MATCHED",matching,"EXPECTED PHONE WIDTH",expected,flush=True)
           assert matching,"ContentVec graph does not output the required generator feature width"
+          expected_rm=rm.graph.input[0]
+          print("PITCH INPUT CONTRACT",expected_rm.name,dims(expected_rm),flush=True)
+          assert len(dims(expected_rm)) in (2,3),"Unsupported RMVPE input rank"
           PY
