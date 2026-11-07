@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import zipfile
@@ -93,6 +94,38 @@ def select_voice_reference(audio, reference, scratch):
             "analyzed_seconds": round(len(samples) / rate, 2),
             "reference_start_seconds": round(start / rate, 2),
             "reference_seconds": round(len(best) / rate, 2)}
+
+
+def check_gpu_distributed():
+    """Fail before 400 teacher conversions if local PyTorch rendezvous cannot bind."""
+    import torch.distributed as dist
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    previous_addr = os.environ.get("MASTER_ADDR")
+    previous_port = os.environ.get("MASTER_PORT")
+    os.environ["MASTER_ADDR"] = "127.0.0.1"
+    os.environ["MASTER_PORT"] = str(port)
+    try:
+        dist.init_process_group(
+            backend="gloo", init_method="env://", rank=0, world_size=1
+        )
+        say(f"GPU distributed preflight passed on free localhost port {port}.")
+    except Exception as exc:
+        raise RuntimeError(
+            "Distributed training cannot open a localhost port; "
+            "aborting before creating expensive teacher pairs."
+        ) from exc
+    finally:
+        if dist.is_initialized():
+            dist.destroy_process_group()
+        for name, previous in (
+            ("MASTER_ADDR", previous_addr), ("MASTER_PORT", previous_port)
+        ):
+            if previous is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = previous
 
 
 def prepare_corpus(cache):
@@ -204,6 +237,7 @@ def main():
     if not torch.cuda.is_available():
         raise RuntimeError("A CUDA GPU is required for teacher conversion and training.")
     say("GPU: " + torch.cuda.get_device_name(0))
+    check_gpu_distributed()
     work.mkdir(parents=True, exist_ok=True)
     name = slug(args.name or audio.stem)
     reference = work / "target_reference.wav"
