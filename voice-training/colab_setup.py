@@ -72,6 +72,17 @@ def main():
         "print('Python',sys.version.split()[0], 'CUDA',torch.cuda.is_available(),"
         "'Torch',torch.__version__,'NumPy',numpy.__version__);"
         "assert torch.cuda.is_available(), 'CUDA unavailable in isolated Python'")
+    # Catch missing upstream imports before downloading source corpora or voices.
+    run(str(PYTHON), "-c",
+        "import sys;"
+        "sys.path.insert(0, '/content/seed-vc');"
+        "import inference;"
+        "print('Seed-VC inference imports verified')")
+    run(str(PYTHON), "-c",
+        "import sys;"
+        "sys.path.insert(0, '/content/llvc-upstream');"
+        "from model import Net;"
+        "print('KoeAI LLVC generator imports verified')")
     print("\nSUCCESS: Python 3.10 GPU training environment installed.")
     print("USE THIS PYTHON FOR ALL TEACHER AND TRAINING STEPS:", PYTHON, flush=True)
 
