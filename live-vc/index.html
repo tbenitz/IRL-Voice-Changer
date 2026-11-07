@@ -97,7 +97,21 @@ h3{font-size:15px;margin:0 0 9px}
   <section class="panel" id="rvc-live">
     <div class="between"><div><span class="eyebrow">02 · LIVE NEURAL VOICE CONVERSION — EXPERIMENTAL</span><h2>Stream your microphone through real RVC</h2></div><span class="status-pill" id="rvc-live-badge">OFF · MUTED</span></div>
     <p>This mode feeds microphone blocks to a <strong>persistent, on-device RVC v2 ONNX worker</strong>. It uses real ContentVec features, RMVPE pitch tracking, and a trained RVC generator. Unlike Pocket TTS or the DSP presets above, the voice identity comes from your actual RVC model. Processing delay may be severe on 8 GB ChromeOS and has not been hardware-verified.</p>
-    <div class="rvc-info"><strong>Prepare models below first:</strong> add a compatible trained RVC v2 .onnx voice checkpoint, then upload or download the ContentVec and RMVPE ONNX base models in the <a href="#rvc">model files section</a>. These are reused for all microphone chunks. A 3-second recording alone is not a trained RVC model.</div>
+    <div class="rvc-info" style="border-color:#4db1a1;background:#12353b">
+      <strong>One-click model setup · no files to find</strong>
+      <p style="margin:5px 0 11px">Choose a trained RVC voice and press Start below. The site downloads that checkpoint and the required ContentVec and RMVPE models, then connects your microphone. First download is around 250 MB.</p>
+      <label for="rvc-preset" style="display:block;font-size:12px;font-weight:800">Built-in voice</label>
+      <select id="rvc-preset" style="display:block;width:100%;margin:6px 0 10px;background:#0b1e2a;color:#eaffff;border:1px solid #4a8c8a;border-radius:10px;padding:11px">
+        <option value="ne_rvc_m01">Male 01 — RVC v2 48 kHz</option>
+        <option value="ne_rvc_f01">Female 01 — RVC v2 48 kHz</option>
+        <option value="ne_rvc_m02">Male 02 — RVC v2 48 kHz</option>
+        <option value="ne_rvc_f02">Female 02 — RVC v2 48 kHz</option>
+        <option value="custom">My own trained RVC .onnx checkpoint</option>
+      </select>
+      <progress id="rvc-model-progress" value="0" max="100" hidden style="width:100%;accent-color:#63e2d2"></progress>
+      <div id="rvc-model-status" aria-live="polite" style="font-size:12px;color:#b1dcd8">Weights download only when selected and are cached in this browser when storage permits. Audio inference stays on device.</div>
+      <p style="margin:9px 0 0;font-size:11px">Built-in voices: <a href="https://huggingface.co/ampixa/nepali-rvc-voices-v1" target="_blank" rel="noopener">Ampixa Labs</a> (CC BY 4.0, trained on IndicVoices-R). They were trained on Nepali speech, so English quality can vary. Base models: <a href="https://huggingface.co/TigreGotico/voiceclonnx-rvc" target="_blank" rel="noopener">TigreGotico voiceclonnx</a> (MIT).</p>
+    </div>
     <div class="actions">
       <label style="font-size:12px">Microphone block
         <select id="rvc-live-chunk" style="display:block;background:#162e43;color:var(--txt);border:1px solid #3a5a6d;border-radius:9px;padding:10px">
@@ -109,7 +123,7 @@ h3{font-size:15px;margin:0 0 9px}
           <option value="48000">48 kHz</option><option value="40000">40 kHz</option><option value="32000">32 kHz</option>
         </select>
       </label>
-      <button class="primary" id="rvc-live-start" type="button">Load AI model &amp; start microphone</button>
+      <button class="primary" id="rvc-live-start" type="button">Download selected RVC &amp; start mic</button>
       <button class="secondary" id="rvc-live-stop" type="button" disabled>Stop / mute</button>
     </div>
     <div class="stats">
@@ -126,7 +140,7 @@ h3{font-size:15px;margin:0 0 9px}
     <div class="between"><div><span class="eyebrow">02 · ACTUAL AI VOICE CONVERSION</span><h2>RVC model test in your browser</h2></div><span class="status-pill">EXPERIMENTAL · RECORDING</span></div>
     <p>Real ONNX <strong>ContentVec → RMVPE → RVC generator</strong> inference entirely on your device, using the open-source <a href="https://github.com/moyue23/rvc-web-runtime" target="_blank" rel="noopener">rvc-web-runtime</a> engine. This is <strong>not real-time</strong> yet. The recording converter reloads sessions per conversion; the experimental live mic mode above instead has a separate persistent-session worker.</p>
     <div class="rvc-grid">
-      <label class="file-input"><b>1 · Trained RVC voice checkpoint</b><small>Compatible RVC v2 ONNX; a three-second MP3 is <strong>not</strong> a trained checkpoint.</small><input id="rvc-model" type="file" accept=".onnx"></label>
+      <label class="file-input"><b>Optional · Upload your own trained RVC checkpoint</b><small>Compatible RVC v2 ONNX; built-in voices above require no uploads.</small><input id="rvc-model" type="file" accept=".onnx"></label>
       <label class="file-input"><b>2 · Speech to convert</b><small>MP3/WAV recording; 3–10 seconds recommended for 8 GB Chromebook</small><input id="rvc-audio" type="file" accept="audio/*"></label>
       <label class="file-input"><b>3 · ContentVec model</b><small>ONNX feature extractor; can download on demand (~95 MB Q8 version)</small><input id="rvc-vec" type="file" accept=".onnx"></label>
       <label class="file-input"><b>4 · RMVPE model</b><small>ONNX pitch estimator; can download on demand (~99 MB Q8 version)</small><input id="rvc-pitch" type="file" accept=".onnx"></label>
@@ -138,7 +152,7 @@ h3{font-size:15px;margin:0 0 9px}
       <button class="primary" type="button" id="rvc-run">Convert with real RVC</button>
     </div>
     <progress id="rvc-progress" value="0" max="100" hidden></progress>
-    <div id="rvc-status" role="status" aria-live="polite">Upload an RVC ONNX checkpoint and a short source recording. ContentVec and RMVPE can be uploaded or downloaded. Nothing is sent to an inference server.</div>
+    <div id="rvc-status" role="status" aria-live="polite">Choose a built-in voice or upload your own ONNX generator. The same downloaded base models can also be used for a separate recorded-audio test.</div>
     <audio controls id="rvc-output" hidden></audio><a id="rvc-save" hidden download="irl-rvc-converted.wav">Download converted WAV</a>
     <div class="notice">The model files must be real and compatible. Model downloads and JavaScript libraries need internet once; inference runs locally. On an 8 GB Chromebook the three-model RVC pipeline may run slowly, exhaust memory, or fail. If that happens the page reports the error without pretending that a pitch-shifted file was neural RVC.</div>
   </section>
@@ -262,9 +276,10 @@ labels();
 // Experimental actual RVC file-mode inference. NEVER pass off the DSP output as RVC.
 const RUNTIME={vec:null,pitch:null,busy:false};
 window.__IRL_RVC_getModels = () => ({
- voice: $("rvc-model").files?.[0] || null,
- contentVec: $("rvc-vec").files?.[0] || RUNTIME.vec,
- rmvpe: $("rvc-pitch").files?.[0] || RUNTIME.pitch,
+ voice: $("rvc-model").files?.[0] || window.__IRL_RVC_prepared?.voice || null,
+ contentVec: $("rvc-vec").files?.[0] || window.__IRL_RVC_prepared?.contentVec || RUNTIME.vec,
+ rmvpe: $("rvc-pitch").files?.[0] || window.__IRL_RVC_prepared?.rmvpe || RUNTIME.pitch,
+ fixedVoiceFrames: $("rvc-model").files?.[0] ? 0 : (window.__IRL_RVC_prepared?.fixedVoiceFrames || 0),
  busy: RUNTIME.busy,
 });
 
@@ -351,5 +366,6 @@ $("rvc-run").addEventListener("click",async()=>{
 });
 })();
 </script>
-<script defer src="./rvc-live-ui.js?v=20261106-v1"></script>
+<script defer src="./model-presets.js?v=20261106-auto1"></script>
+<script defer src="./rvc-live-ui.js?v=20261106-auto1"></script>
 </body></html>
