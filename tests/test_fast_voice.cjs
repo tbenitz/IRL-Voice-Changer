@@ -44,7 +44,7 @@ const fakert={
  Tensor,env:{wasm:{}},
  InferenceSession:{async create(bytes,opts){
   sessionLoads++;
-  assert(bytes.byteLength>100000);
+  assert(bytes.byteLength>=128 && bytes.byteLength<100000, "Small trained ONNX should be accepted by worker");
   assert.equal(opts.executionProviders[0],"wasm");
   return {
    inputNames:["audio_in"],outputNames:["audio_out"],
@@ -67,9 +67,11 @@ const outputs=[],self={postMessage(x){outputs.push(x)},onmessage:null},context={
 vm.runInNewContext(source,context);
 (async()=>{
  await self.onmessage({data:{
-  type:"init",model:new ArrayBuffer(100001),historySamples:2048
+  type:"init",model:new ArrayBuffer(65536),historySamples:2048
  }});
- assert(outputs.some(x=>x.type==="ready"),"Neural model did not initialize");
+ assert(outputs.some(x=>x.type==="ready"),"Small trained neural ONNX did not initialize");
+ assert(outputs.some(x=>x.type==="stage" && /64\.0 KB neural ONNX/.test(x.text)),
+        "Loading status must reflect the actual model size instead of saying 13.7 MB");
  assert.equal(sessionLoads,1);
  for(let i=0;i<3;i++){
   const pcm=new Float32Array(2048).fill(.3);
@@ -79,6 +81,9 @@ vm.runInNewContext(source,context);
  }
  assert.equal(sessionRuns,3);
  assert.equal(sessionLoads,1,"Neural session must persist across microphone chunks");
+ await self.onmessage({data:{type:"init",model:new ArrayBuffer(32),historySamples:2048}});
+ assert(outputs.some(x=>x.type==="error" && /empty, invalid, or incomplete/.test(x.text)),
+        "Empty or obviously incomplete models must be rejected without leaking dry microphone");
  assert(control.includes("capture.connect(ctx.destination)"),"Fail-closed worklet is not connected");
  assert(!control.includes("app.source.connect(ctx.destination)"),"Dry microphone route detected");
  assert(!control.includes("src.connect(ctx.destination)"),"Direct microphone playback detected");
