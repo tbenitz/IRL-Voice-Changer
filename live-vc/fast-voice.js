@@ -6,7 +6,7 @@
 "use strict";
 const $=id=>document.getElementById(id);
 const MODEL_ROOT="https://raw.githubusercontent.com/ultrapg/hevoicechanger/main/models/";
-const FAST_BUILD="20261106-cacheguard-v5";
+const FAST_BUILD="20261107-voice-safety-v6";
 const voices={
  hfg:{name:"female_voice_hfg_new.onnx",bytes:13756183},
  old_hq:{name:"female_voice_old_hq.onnx",bytes:13718163},
@@ -309,7 +309,9 @@ async function activateMic(token){
  capture.port.postMessage({type:"enable",enabled:true});
  for(const t of stream.getTracks())t.onended=()=>{void stop("Microphone disconnected.")};
  toggle();badge("LIVE NEURAL", "live");
- info("Running genuine causal neural voice conversion locally at 16 kHz. Headphones recommended.");
+ info(["saved","custom"].includes($("voice").value)
+  ? "Experimental ONNX loaded with voice-change protection: nearly unchanged microphone audio will be muted, not mistaken for a converted voice."
+  : "Running pre-trained 13.7 MB voice conversion locally at 16 kHz. Headphones recommended.");
 }
 async function start(){
  if(app.loading||app.active)return;
@@ -317,7 +319,7 @@ async function start(){
   info("Requires Chrome over HTTPS with microphone and AudioWorklet permission.",true);return;
  }
  app.loading=true;app.drops=0;app.inFlight=false;app.pending=null;
- app.chunkFrames=Number($("chunk").value)||2048;
+ app.chunkFrames=Number($("chunk").value)||8192;
  app.historySamples=Number($("history").value)||4096;
  $("drops").textContent="0";$("lag").textContent="—";$("inference").textContent="—";$("rtf").textContent="—";
  toggle();badge("LOADING AI");
@@ -335,15 +337,25 @@ async function start(){
   app.worker=worker;app.workerBlobUrl=blobUrl;app.verifiedWorkerBuild=false;
   worker.onmessage=e=>eventFromWorker(e,token);
   worker.onerror=e=>{if(token===app.token)void stop("Neural worker crashed: "+(e.message||"unknown"))};
-  worker.postMessage({type:"init",model:weights,historySamples:app.historySamples},[weights]);
+  worker.postMessage({type:"init",model:weights,historySamples:app.historySamples,
+    requireVoiceChange:["saved","custom"].includes($("voice").value)},[weights]);
  }catch(e){
   if(token===app.token)await stop("Could not initialize the real neural model: "+(e?.message||e));
  }
 }
-$("voice").addEventListener("change",()=>{
- $("custom-field").hidden=$("voice").value!=="custom";
- $("download-status").textContent="Selected a neural voice. Download starts only when you click Start.";
-});
+function describeVoiceSelection(){
+ const choice=$("voice").value;
+ $("custom-field").hidden=choice!=="custom";
+ const details=choice==="saved"
+  ? "SAVED model: loads your latest Pocket Studio ONNX automatically from this same browser. No file upload. The voice-change guard will mute an almost unchanged mic signal."
+  : choice==="custom"
+    ? "MANUAL model: choose a compatible audio_in → audio_out .onnx file from Chromebook Downloads. This is separate from the Saved model."
+    : "PRETRAINED model: loads a genuine trained 13.7 MB streaming voice converter. You do not need to upload a model.";
+ $("voice-mode-detail").textContent=details;
+ $("download-status").textContent=details;
+}
+$("voice").addEventListener("change",describeVoiceSelection);
+describeVoiceSelection();
 $("volume").addEventListener("input",()=>{
  $("volume-value").textContent=$("volume").value+"%";
  if(app.gain&&app.ctx)app.gain.gain.setTargetAtTime(Number($("volume").value)/100,app.ctx.currentTime,.015);
