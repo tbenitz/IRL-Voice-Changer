@@ -73,6 +73,14 @@ Pocket generation is local in the browser, but the speech recognition part may u
 
 The [Pages workflow](.github/workflows/pages.yml) now validates and deploys the committed Pocket files rather than overwriting the fixed copy during deployment.
 
+## Verified pretrained ONNX behavior (real audio test, 7 November 2026)
+
+The published 13.7 MB `female_voice_hfg_new.onnx` checkpoint was tested with a generated 16 kHz spoken male voice using **real ONNX Runtime Web WASM**, with the upstream engine's full **1-second history** and 512 ms chunks. Its median pitch measured about **104 Hz at the source and 107 Hz in the raw ONNX output**. The output was also quieter (RMS about 0.035 vs input 0.090). A changed waveform is not a verified target-speaker voice.
+
+To address the missing native-app feature, Fast Neural now includes an **explicit, independent post-ONNX pitch finisher** (-12 to +12 semitones). It defaults to **+6 for the pretrained female presets**, 0 for saved/imported custom models. A second test using the **same production granulator on the REAL ONNX output** measured **107 → 151 Hz** at +6 semitones without changing speech duration. This is a real neural output *followed by a labeled DSP pitch adjustment*, **not a validated voice match**. Optional output-only auto-level matching compensates the checkpoint's quiet volume, capped at 3×; it never plays dry microphone audio. Select 0 semitones and disable auto-level to hear the raw ONNX model.
+
+[Download auditable source, raw-ONNX, and ONNX+pitch WAVs](https://github.com/tbenitz/IRL-Voice-Changer/actions/runs/42353552825/artifacts/13566432522) or see [the actual GitHub Actions audio test](https://github.com/tbenitz/IRL-Voice-Changer/actions/runs/42353552825). These synthetic speech samples demonstrate the DSP works but **do not prove the output matches the target speaker**. Pitch estimator errors and synthesized-source timbre mean listening is still necessary.
+
 ## Browser-only project — no Windows EXE
 
 This repository builds the GitHub Pages site: a real streaming ONNX voice changer, a Pocket TTS browser studio, and an experimental synthetic-speech dataset / custom student trainer. **It does not build, embed, or generate Windows executables.** Your separate Windows voice-cloning projects remain independent.
