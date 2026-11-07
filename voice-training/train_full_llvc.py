@@ -150,11 +150,48 @@ def export(upstream, output, steps, name):
         results.append({"samples": n, "output_rms": rms})
     require(onnx_path.stat().st_size > 2_000_000,
             "Full LLVC model unexpectedly tiny; refusing to label it a full trained model")
+    # Held-out A/B sound files are mandatory: source vs actual teacher vs
+    # trained ONNX output. Listening, not ONNX file size, judges voice quality.
+    from scipy.io import wavfile
+    validation_dir = Path(config["data"]["dir"]) / "val"
+    original = next(iter(sorted(validation_dir.glob("*_original.wav"))), None)
+    require(original is not None, "Missing held-out validation speech")
+    teacher = original.with_name(original.name.replace("_original.wav", "_converted.wav"))
+    require(teacher.is_file(), "Missing teacher output for held-out speech")
+    source_sr, dry_pcm = wavfile.read(str(original))
+    target_sr, teacher_pcm = wavfile.read(str(teacher))
+    require(source_sr == target_sr == 16000, "A/B reference rate must be 16 kHz")
+    n = min(len(dry_pcm), len(teacher_pcm), 4*16000)
+    require(n >= 16000, "Not enough held-out material to check the trained voice")
+    dry = np.asarray(dry_pcm[:n], dtype=np.float32) / 32768
+    voice_teacher = np.asarray(teacher_pcm[:n], dtype=np.float32) / 32768
+    history = np.zeros(4096, np.float32)
+    generated = []
+    for start in range(0, n, 4096):
+        block = dry[start:start+4096]
+        padded = np.pad(block, (0, 4096-len(block)))
+        full = np.concatenate([history, padded]).astype(np.float32)[None,None,:]
+        result = session.run(["audio_out"], {"audio_in": full})[0].reshape(-1)
+        require(np.isfinite(result).all(), "Student ONNX generated invalid validation audio")
+        generated.append(np.clip(result[-4096:][:len(block)], -1, 1))
+        history = padded
+    voice_student = np.concatenate(generated)[:n]
+    def save_compare(label, pcm):
+        wavfile.write(str(output / ("AB_" + label + ".wav")), 16000,
+                      (np.clip(pcm, -1, 1) * 32767).astype(np.int16))
+    save_compare("original", dry)
+    save_compare("teacher", voice_teacher)
+    save_compare("trained_ONNX", voice_student)
+    voice_rms = float(np.sqrt(np.mean(voice_student*voice_student)))
+    require(voice_rms > 0.003,
+            "Trained ONNX failed A/B test: nearly silent output. Checkpoint preserved.")
     report = {
         "type": "pretrained-LLVC-HFG-finetuned-streaming-ONNX", "steps": steps,
         "file": onnx_path.name, "size_bytes": onnx_path.stat().st_size,
         "onnx_io": "audio_in -> audio_out", "sample_rate": 16000,
         "inference_checks": results,
+        "held_out_ab_files": ["AB_original.wav", "AB_teacher.wav", "AB_trained_ONNX.wav"],
+        "held_out_output_rms": voice_rms,
         "limitations": "ONNX execution verified. Speaker similarity, naturalness, and Chromebook RTF require listening and device testing."}
     (output / "model_report.json").write_text(json.dumps(report, indent=2))
     print("REAL trained full-size ONNX exported:", onnx_path, f"({onnx_path.stat().st_size()/1e6:.2f} MB)")
