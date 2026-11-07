@@ -59,6 +59,7 @@ jobs:
           test -f pocket-demo/studio/trainer-addon.js
           test -f pocket-demo/studio/trainer-data.js
           test -f pocket-demo/studio/trainer-webgpu.js
+          test -f pocket-demo/studio/trainer-teacher-pairs.js
           test -f pocket-demo/studio/trainer-onnx.js
           test -f pocket-demo/studio/studio-addon.js
           test -f pocket-demo/studio/vendor/lame.min.js
@@ -79,6 +80,7 @@ jobs:
           node --check pocket-demo/studio/pocket-mic-addon.js
           node --check pocket-demo/studio/trainer-addon.js
           node --check pocket-demo/studio/trainer-data.js
+          node --check pocket-demo/studio/trainer-teacher-pairs.js
           node --check pocket-demo/studio/trainer-webgpu.js
           node --check pocket-demo/studio/trainer-onnx.js
           node --check pocket-demo/studio/inference-worker.js
