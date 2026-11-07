@@ -1,0 +1,48 @@
+name: Validate real local Pocket student ONNX training/export
+on:
+  push:
+    paths:
+      - "pocket-demo/studio/trainer-*.js"
+      - "tests/test_pocket_trainer.cjs"
+      - ".github/workflows/pocket-student-validation.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate scripts and Pocket integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check pocket-demo/studio/trainer-addon.js
+          node --check pocket-demo/studio/trainer-data.js
+          node --check pocket-demo/studio/trainer-webgpu.js
+          node --check pocket-demo/studio/trainer-onnx.js
+          grep -q 'trainer-addon.js' pocket-demo/studio/index.html
+          grep -q 'value="saved"' live-vc/fast-voice.html
+          grep -q 'pocket-streaming-student-v1' live-vc/fast-voice.js
+      - name: Install TensorFlow.js CPU test backend and exact browser ONNX runtime
+        run: |
+          npm install --no-audit --no-fund --silent --no-save @tensorflow/tfjs@4.22.0 onnxruntime-web@1.22.0
+      - name: Train a real tiny causal model and validate ONNX in WASM
+        run: |
+          node tests/test_pocket_trainer.cjs
+          unzip -t /tmp/pocket-trainer-example.zip
+      - name: Independently verify exported ONNX with Python ONNX checker
+        run: |
+          python -m pip install --quiet onnx
+          python - <<'PY'
+          import onnx
+          model=onnx.load("/tmp/pocket-trained-student.onnx")
+          onnx.checker.check_model(model)
+          print("ONNX graph inputs:",[(i.name,[d.dim_value or d.dim_param for d in i.type.tensor_type.shape.dim]) for i in model.graph.input])
+          print("ONNX graph outputs:",[o.name for o in model.graph.output])
+          print("ONNX operators:",[n.op_type for n in model.graph.node])
+          assert [i.name for i in model.graph.input]==["audio_in"]
+          assert [o.name for o in model.graph.output]==["audio_out"]
+          assert sum(n.op_type=="Conv" for n in model.graph.node)==4
+          PY
