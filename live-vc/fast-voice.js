@@ -15,7 +15,8 @@ const voices={
 const app={token:0,loading:false,active:false,worker:null,stream:null,ctx:null,
  source:null,capture:null,gain:null,sources:new Set(),abort:null,inFlight:false,pending:null,
  nextPlayTime:0,drops:0,chunkFrames:2048,historySamples:4096,lastCapture:0,
- workerBlobUrl:null,verifiedWorkerBuild:false};
+ workerBlobUrl:null,verifiedWorkerBuild:false,
+ audit:null,inFlightSource:null,auditUrls:[]};
 const CACHE="irl-fast-neural-voice-models", STORE="weights";
 async function loadVerifiedWorker(){
  // Fetch tiny worker (not voice weights) using no browser/CDN cache.
@@ -50,6 +51,7 @@ function badge(text,kind=""){
 function toggle(){
  $("start").disabled=app.loading||app.active;
  $("stop").disabled=!(app.loading||app.active);
+ $("audit-start").disabled=!app.active||!!app.audit;
  for(const id of ["voice","model-file","chunk","history"])$(id).disabled=app.loading||app.active;
 }
 function meters(id,pcm){
@@ -193,6 +195,64 @@ async function stop(message){
  toggle();badge("OFF · MUTED");
  if(message)info(message);
 }
+const AUDIT_MAX_FRAMES=8*16000;
+function wav16k(pcm){
+ const buffer=new ArrayBuffer(44+pcm.length*2),v=new DataView(buffer);
+ const ascii=(pos,value)=>{for(let i=0;i<value.length;i++)v.setUint8(pos+i,value.charCodeAt(i))};
+ ascii(0,"RIFF");v.setUint32(4,36+pcm.length*2,true);ascii(8,"WAVE");ascii(12,"fmt ");
+ v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+ v.setUint32(24,16000,true);v.setUint32(28,32000,true);v.setUint16(32,2,true);v.setUint16(34,16,true);
+ ascii(36,"data");v.setUint32(40,pcm.length*2,true);
+ for(let i=0;i<pcm.length;i++){
+  const x=Math.max(-1,Math.min(1,pcm[i]));
+  v.setInt16(44+i*2,Math.round((x<0?32768:32767)*x),true);
+ }
+ return new Blob([buffer],{type:"audio/wav"});
+}
+function joinAudio(chunks,count){
+ const pcm=new Float32Array(count);let at=0;
+ for(const chunk of chunks){
+  if(at>=count)break;
+  const n=Math.min(count-at,chunk.length);
+  pcm.set(chunk.subarray(0,n),at);at+=n;
+ }
+ return pcm;
+}
+function completeAudit(stopped=false){
+ const audit=app.audit;
+ if(!audit)return;
+ app.audit=null;app.inFlightSource=null;
+ if(audit.frames<16000){
+  $("audit-status").textContent="Not enough paired converted audio captured. Speak for at least one second and try again.";
+  toggle();return;
+ }
+ for(const url of app.auditUrls)URL.revokeObjectURL(url);
+ app.auditUrls=[];
+ const frameCount=Math.min(audit.frames,AUDIT_MAX_FRAMES);
+ const mic=joinAudio(audit.mic,frameCount);
+ const ai=joinAudio(audit.converted,frameCount);
+ const micUrl=URL.createObjectURL(wav16k(mic)),aiUrl=URL.createObjectURL(wav16k(ai));
+ app.auditUrls=[micUrl,aiUrl];
+ $("audit-source").src=micUrl;$("audit-output").src=aiUrl;
+ $("audit-download-source").href=micUrl;$("audit-download-output").href=aiUrl;
+ $("audit-results").hidden=false;
+ $("audit-status").textContent="Captured "+(frameCount/16000).toFixed(1)+
+  " sec of paired original microphone and actual ONNX output"+
+  (stopped?" before Stop":"")+". Both local WAV clips are ready. The original microphone was NOT played automatically.";
+ toggle();
+}
+function collectAudit(original,converted){
+ const audit=app.audit;
+ if(!audit||!(original instanceof Float32Array)||!(converted instanceof Float32Array))return;
+ const n=Math.min(original.length,converted.length,AUDIT_MAX_FRAMES-audit.frames);
+ if(n<=0)return;
+ audit.mic.push(original.slice(0,n));
+ audit.converted.push(converted.slice(0,n));
+ audit.frames+=n;
+ $("audit-status").textContent="Capturing actual neural output "+
+  (audit.frames/16000).toFixed(1)+" / 8.0 seconds…";
+ if(audit.frames>=AUDIT_MAX_FRAMES)completeAudit();
+}
 function inputChunk(pcm){
  if(!app.active||!app.worker)return;
  meters("input-meter",pcm);
@@ -208,6 +268,7 @@ function inputChunk(pcm){
 function convert(block){
  if(!app.active||!app.worker)return;
  app.inFlight=true;app.lastCapture=block.at;
+ app.inFlightSource=app.audit?block.pcm.slice():null;
  app.worker.postMessage({type:"convert",pcm:block.pcm},[block.pcm.buffer]);
 }
 function play(d){
@@ -246,6 +307,8 @@ function play(d){
  src.buffer=buf;src.connect(app.gain);app.sources.add(src);
  src.onended=()=>{app.sources.delete(src);try{src.disconnect()}catch(_){}};
  src.start(scheduled);
+ collectAudit(app.inFlightSource,pcm);
+ app.inFlightSource=null;
  app.nextPlayTime=scheduled+buf.duration;
  meters("output-meter",pcm);
  $("lag").textContent=Math.round(actualDelay+(scheduled-ctx.currentTime)*1000);
