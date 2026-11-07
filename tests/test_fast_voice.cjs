@@ -94,7 +94,7 @@ vm.runInNewContext(source,context);
   await self.onmessage({data:{type:"convert",pcm:new Float32Array(8192).fill(.25)}});
  assert.equal(outputs.filter(x=>x.type==="audio").length,playedBefore,
   "Near-identical experimental model played the original mic as converted speech");
- assert(outputs.some(x=>x.type==="error"&&/almost unchanged microphone audio/.test(x.text)),
+ assert(outputs.some(x=>x.type==="error"&&/essentially the same microphone waveform|almost silence/.test(x.text)),
   "Custom model should explain why near-identity voice conversion was muted");
  await self.onmessage({data:{type:"init",model:new ArrayBuffer(32),historySamples:2048}});
  assert(outputs.some(x=>x.type==="error" && /empty, invalid, or incomplete/.test(x.text)),
