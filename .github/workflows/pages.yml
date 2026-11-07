@@ -56,6 +56,10 @@ jobs:
           test -f pocket-demo/studio/app.js
           test -f pocket-demo/studio/PCMPlayerWorklet.js
           test -f pocket-demo/studio/inference-worker.js
+          test -f pocket-demo/studio/trainer-addon.js
+          test -f pocket-demo/studio/trainer-data.js
+          test -f pocket-demo/studio/trainer-webgpu.js
+          test -f pocket-demo/studio/trainer-onnx.js
           test -f pocket-demo/studio/studio-addon.js
           test -f pocket-demo/studio/vendor/lame.min.js
           test "$(wc -c < pocket-demo/studio/sentencepiece.js)" -gt 3000000
@@ -73,6 +77,10 @@ jobs:
           node tests/test_rvc_pipeline_stub.cjs
           node tests/test_fast_voice.cjs
           node --check pocket-demo/studio/pocket-mic-addon.js
+          node --check pocket-demo/studio/trainer-addon.js
+          node --check pocket-demo/studio/trainer-data.js
+          node --check pocket-demo/studio/trainer-webgpu.js
+          node --check pocket-demo/studio/trainer-onnx.js
           node --check pocket-demo/studio/inference-worker.js
           node --input-type=module --check < pocket-demo/studio/app.js
           node --input-type=module --check < pocket-demo/studio/PCMPlayerWorklet.js
