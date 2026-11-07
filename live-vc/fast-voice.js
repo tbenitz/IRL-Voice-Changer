@@ -175,6 +175,7 @@ async function getModel(){
 }
 async function stop(message){
  app.token++;
+ if(app.audit)completeAudit(true);
  app.loading=false;app.active=false;
  try{app.abort?.abort()}catch(_){}
  try{app.capture?.port.postMessage({type:"enable",enabled:false})}catch(_){}
@@ -190,6 +191,7 @@ async function stop(message){
  try{await app.ctx?.close()}catch(_){}
  Object.assign(app,{abort:null,worker:null,ctx:null,stream:null,source:null,capture:null,
   gain:null,inFlight:false,pending:null,nextPlayTime:0,lastCapture:0,
+  inFlightSource:null,
   workerBlobUrl:null,verifiedWorkerBuild:false});
  $("download").hidden=true;
  toggle();badge("OFF · MUTED");
@@ -279,6 +281,15 @@ function play(d){
  const rtf=Number(d.rtf)||0,elapsed=Number(d.inferenceMs)||0;
  $("rtf").textContent=rtf.toFixed(2)+"×";
  $("inference").textContent=Math.round(elapsed);
+ const voiced=Number(d.inputRms)>.012,correlation=Number(d.correlation);
+ const delta=Number(d.changeRatio);
+ $("wave-change").textContent=voiced&&Number.isFinite(delta)?(delta*100).toFixed(1)+"%":"—";
+ $("wave-corr").textContent=voiced&&Number.isFinite(correlation)?correlation.toFixed(4):"—";
+ $("voice-change-note").textContent=!voiced
+  ?"Speak naturally to measure how much the ONNX output differs from your microphone."
+  :correlation>.97
+   ?"Warning: ONNX audio still tracks the original waveform closely. This may NOT sound like another speaker."
+   :"ONNX output differs from the input waveform. Compare the A/B recordings to judge audible timbre; this is NOT proof of speaker identity.";
  $("performance-note").textContent=rtf<=.7?"Running faster than real time with useful headroom.":
   rtf<1?"Near the processing limit; try a larger chunk if audio skips.":
   "This setting is slower than real-time on your device. Try a shorter history or larger chunk.";
@@ -312,8 +323,10 @@ function play(d){
  app.nextPlayTime=scheduled+buf.duration;
  meters("output-meter",pcm);
  $("lag").textContent=Math.round(actualDelay+(scheduled-ctx.currentTime)*1000);
- info("Live neural voice is playing (not the raw mic). "+Math.round(elapsed)+
-  " ms model inference for "+Math.round(app.chunkFrames/16)+" ms audio, RTF "+rtf.toFixed(2)+".");
+ info("ONNX-generated PCM scheduled: "+Math.round(elapsed)+" ms inference for "+
+  Math.round(app.chunkFrames/16)+" ms captured speech. Waveform correlation "+
+  (Number.isFinite(correlation)?correlation.toFixed(3):"unknown")+
+  "; RTF "+rtf.toFixed(2)+". Listen to the separate A/B recording to verify timbre.");
 }
 function eventFromWorker(e,token){
  if(token!==app.token)return;
@@ -340,6 +353,7 @@ function eventFromWorker(e,token){
   if(app.active&&app.pending){const next=app.pending;app.pending=null;convert(next)}
  }else if(d.type==="dropped"){
   app.drops++;$("drops").textContent=String(app.drops);
+  if(d.reason)info("ONNX output block muted/dropped: "+d.reason,true);
  }else if(d.type==="error"){
   void stop("Neural VC error: "+(d.text||"unknown")+". The raw mic was not played.");
  }
@@ -387,6 +401,8 @@ async function start(){
  app.chunkFrames=Number($("chunk").value)||8192;
  app.historySamples=Number($("history").value)||4096;
  $("drops").textContent="0";$("lag").textContent="—";$("inference").textContent="—";$("rtf").textContent="—";
+ $("wave-change").textContent="—";$("wave-corr").textContent="—";
+ $("voice-change-note").textContent="Speak after model initialization to measure the true ONNX output versus input. This is not a speaker identity score.";
  toggle();badge("LOADING AI");
  const token=++app.token;
  try{
@@ -403,7 +419,7 @@ async function start(){
   worker.onmessage=e=>eventFromWorker(e,token);
   worker.onerror=e=>{if(token===app.token)void stop("Neural worker crashed: "+(e.message||"unknown"))};
   worker.postMessage({type:"init",model:weights,historySamples:app.historySamples,
-    requireVoiceChange:["saved","custom"].includes($("voice").value)},[weights]);
+    requireVoiceChange:true},[weights]);
  }catch(e){
   if(token===app.token)await stop("Could not initialize the real neural model: "+(e?.message||e));
  }
@@ -426,6 +442,13 @@ $("volume").addEventListener("input",()=>{
  if(app.gain&&app.ctx)app.gain.gain.setTargetAtTime(Number($("volume").value)/100,app.ctx.currentTime,.015);
 });
 $("start").addEventListener("click",()=>{void start()});
+$("audit-start").addEventListener("click",()=>{
+ if(!app.active||app.audit)return;
+ app.audit={mic:[],converted:[],frames:0};
+ $("audit-results").hidden=true;
+ $("audit-status").textContent="Recording up to 8 seconds from the input and actual ONNX output. Speak into your mic.";
+ toggle();
+});
 $("engine-build").textContent="Neural runtime build: "+FAST_BUILD+
   " · worker fetched cache-free and version-verified";
 $("reload-engine").addEventListener("click",()=>{
