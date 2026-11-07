@@ -82,6 +82,10 @@ progress{width:100%;height:13px;accent-color:var(--mint)}
       <small>The upstream 13.7 MB streaming engine uses 1000 ms of previous audio. The earlier 256 ms browser default could reduce quality. This is slower on weak CPUs; try 500 ms if output drops.</small>
     </label>
   </div>
+  <label class="field">Pitch finish after neural ONNX <span id="pitch-finish-label">+6 semitones</span>
+    <input id="pitch-finish" type="range" min="-12" max="12" step="1" value="6">
+    <small>This is a separately labeled pitch-shifting DSP applied <b>after</b> the real neural model. The upstream Linux app also has this option. Set <b>0</b> to hear the untouched model output. This will not train or reproduce a specific person's voice, and may introduce granular artifacts.</small>
+  </label>
   <label class="field">Converted output level <span id="volume-value">80%</span>
     <input id="volume" type="range" min="0" max="150" value="80">
   </label>
@@ -108,7 +112,7 @@ progress{width:100%;height:13px;accent-color:var(--mint)}
   <p id="voice-change-note"><b>VOICE IDENTITY NOT VERIFIED.</b> A signal difference—even a large one—may only be a filter, gain or distortion. Use the A/B clips to judge whether a different voice is audible.</p>
   <div style="border:1px solid #3a6976;border-radius:12px;padding:16px;margin-top:18px">
     <strong>A/B recording test • actual model output</strong>
-    <p class="fine">With headphones on, click Capture while the model is LIVE and speak for 8 seconds. Two local WAV clips will let you compare the captured microphone with the exact PCM returned by the neural ONNX worker. Neither recording is automatically played or uploaded.</p>
+    <p class="fine">Wear headphones and click Capture while the model is running. Two local WAV clips compare your original mic and the final ONNX output <b>including optional, explicitly selected pitch finishing</b>. Neither recording is automatically played or uploaded.</p>
     <div class="actions"><button id="audit-start" class="secondary" type="button" disabled>Capture 8 seconds: mic vs ONNX</button></div>
     <p id="audit-status" class="fine">Start a neural microphone model to enable the A/B test.</p>
     <div id="audit-results" hidden>
@@ -124,7 +128,7 @@ progress{width:100%;height:13px;accent-color:var(--mint)}
   <div style="height:1px;background:#2d4b5e;margin:23px 0"></div>
   <span class="eyebrow">What model is this?</span>
   <p>The <b>13.7 MB built-in checkpoints</b> are causal LLVC-style streaming students trained from an RVC teacher, published by <a href="https://github.com/ultrapg/hevoicechanger" target="_blank" rel="noopener">HEVoicechanger</a> under GPL-3.0. It is genuine neural speech-to-speech conversion, but it is <strong>not</strong> an ordinary RVC checkpoint and cannot directly use most RVC voice downloads.</p>
-  <p>The 13.7 MB model passed a real ONNX Runtime Web WASM test on a Linux CPU. ChromeOS performance and voice quality may differ. It processes 16 kHz mono. <b>The 65 KB Pocket experimental ONNX is a different, much weaker architecture and is not a proven voice clone.</b></p>
+  <p>The 13.7 MB model passed a real ONNX Runtime Web WASM test on a Linux CPU. The upstream engine combines it with an <b>optional pitch shifter</b>. Our test with synthesized low-pitched speech produced an input median pitch around 104 Hz and raw ONNX output around 107 Hz—so the pretrained model did not make that sample substantially higher-pitched by itself. Pitch finish is separate DSP, not training. ChromeOS speed and target-speaker resemblance are unverified. The 65 KB Pocket student is not a proven voice clone.</p>
 </section>
 </div>
 <footer>IRL Voice Changer • Pure client-side AudioWorklet and ONNX Runtime Web WASM • Your audio is not uploaded • <a href="./">Other modes</a></footer>
