@@ -119,7 +119,9 @@ async function getModel(){
  if(choice==="saved"){
   const model=await savedStudentModel();
   if(!model?.blob||!model.validation)
-   throw Error("No validated custom ONNX saved. Open Pocket Studio, prepare data and complete local training first.");
+   throw Error("No validated custom ONNX saved. Open Pocket Studio, generate training speech and complete local training first.");
+  if(model.validation.nearIdentity)
+   throw Error("Your saved experimental ONNX failed the voice-change test: it outputs nearly unchanged microphone audio. This is not a usable custom speaker clone. Try one of the trained 13.7 MB voice presets instead. Your saved file was not deleted.");
   if(model.blob.size>40e6)throw Error("Saved model is unexpectedly large.");
   $("download-status").textContent="Loaded the "+(model.blob.size/1024).toFixed(0)+
     " KB locally trained ONNX model from Pocket Studio (voice quality unverified).";
