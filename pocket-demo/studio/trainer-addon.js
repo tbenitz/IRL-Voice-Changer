@@ -372,62 +372,78 @@ refreshVoices();
 refreshSavedVoices().catch(e=>notice("Could not load your saved Pocket voice list: "+e.message,true));
 async function generateDataset(){
  if(S.running||S.training)return;
- if(!$("trainer-consent").checked){notice("Confirm that you own or have permission to clone the voice.",true);return}
- if(!app.isWorkerReady){notice("Load the Pocket ONNX model in the panel above first.",true);return}
- if(app.el.langSelect.value!=="english_2026-04"){notice("Please switch to the English Pocket model for this synthetic dataset.",true);return}
- const source=$("trainer-source").value;
- if(!app.builtinVoices.includes(source)&&!(source.startsWith("saved:")&&selectedSaved(source))){
-  notice("Select an available built-in or saved custom source voice.",true);return;
+ if(!$("trainer-consent").checked){notice("Confirm your permission to synthesize the chosen voice.",true);return}
+ if(!app.isWorkerReady){notice("Load the Pocket model before generating. You do not need a preview or MP3.",true);return}
+ if(app.el.langSelect.value!=="english_2026-04"){notice("Use the English Pocket model for this dataset.",true);return}
+ const mode=$("trainer-mode").value;
+ const paired=mode==="paired-experimental";
+ const source=paired?$("trainer-source").value:null;
+ if(paired&&!app.builtinVoices.includes(source)&&!(source?.startsWith("saved:")&&selectedSaved(source))){
+  notice("Choose a built-in or saved source voice for experimental two-voice pairs.",true);return;
  }
- if(app.isGenerating||app.isVoiceEncoding){notice("Finish any current Pocket generation before making pairs.",true);return}
- if($("trainer-target").value===source){
-  notice("Choose different source and target voices. Identical voices don't create conversion pairs.",true);return;
+ if(paired&&$("trainer-target").value===source){
+  notice("Choose different target and source speakers.",true);return;
  }
+ if(app.isGenerating||app.isVoiceEncoding){notice("Finish your current Pocket operation first.",true);return}
  S.running=true;S.cancel=false;S.goal=Number($("trainer-goal").value);
  render();
- const originalPlay=app.player?.playAudio;
- if(app.player)app.player.playAudio=()=>{}; // collect actual Pocket PCM without manual playback
+ // Critical: the original code patched app.player.playAudio BEFORE the first
+ // generation; but Pocket creates app.player DURING generate(). Audio leaked.
+ // This flag is now checked at Pocket's actual generate/chunk/stream path.
+ const oldSilence=app.silentBatchMode;
+ app.silentBatchMode=true;
+ app.player?.reset(); // Stop a previously started interactive TTS preview.
  try{
-  notice("Preparing selected saved target voice in Pocket encoder. No preview or MP3 required…");
+  notice("Preparing your saved target voice internally. No audio preview or MP3 is necessary.");
   const hash=await prepareTarget();
-  const old=await D.getMeta("progress");
+  const prev=await D.getMeta("progress");
   if(S.hash&&S.hash!==hash)
-   throw Error("This project already contains another target voice. Export its ZIP and reset before switching.");
-  if(S.pairs&&old?.value?.source&&old.value.source!==source)
-   throw Error("This dataset already uses another source voice. Export and reset before switching.");
+   throw Error("Another target voice is already in this dataset. Export ZIP then reset before switching.");
+  const oldMode=prev?.value?.mode||(S.paired?"paired-experimental":"target-only");
+  if(S.pairs&&oldMode!==mode)
+   throw Error("This dataset contains "+oldMode+" recordings. Export/reset to change recording mode.");
+  if(paired&&S.pairs&&prev?.value?.source&&prev.value.source!==source)
+   throw Error("Existing paired dataset has a different source speaker. Export/reset before switching.");
   S.hash=hash;
-  await D.putMeta("progress",{cursor:S.cursor,hash,source,target:$("trainer-target").value});
-
+  await D.putMeta("progress",{cursor:S.cursor,hash,source,mode,target:$("trainer-target").value});
   while(!S.cancel&&S.seconds<S.goal){
-   const index=S.cursor,text=words(index);
-   notice("Pair "+(index+1)+": generating the cloned Pocket target speech… "+
-    clock(S.seconds)+" / "+clock(S.goal)+" saved.\n"+text);
-   let target=await synth(text,"target");
-   notice("Pair "+(index+1)+": generating the original Pocket comparison voice "+source+"…");
-   let original=await synth(text,source);
-   target=D.trimSilence(D.resample(target,24000));
-   original=D.trimSilence(D.resample(original,24000));
-   if(target.length<D.SR||original.length<D.SR)throw Error("Pocket generated very little usable speech.");
-   if(target.length>D.SR*70||original.length>D.SR*70)throw Error("Unexpectedly long Pocket result");
-   const aligned=D.stretch(original,target.length);
-   const pair={id:"pair-"+String(index).padStart(5,"0"),index,text,
-    seconds:target.length/D.SR,source:D.wav(aligned),target:D.wav(target),
-    sourceVoice:source,targetVoice:$("trainer-target").value,reference:hash,
-    alignment:"Coarse duration stretch only, not phonetic/frame-aligned RVC conversion",
-    createdAt:new Date().toISOString()};
-   await D.savePair(pair);
-   S.cursor++;S.pairs++;S.seconds+=pair.seconds;
-   await D.putMeta("progress",{cursor:S.cursor,hash,source,target:$("trainer-target").value});
+   const idx=S.cursor,text=words(idx);
+   notice("Recording "+(idx+1)+": generating only the selected target voice SILENTLY…\n"+
+    clock(S.seconds)+" saved / "+clock(S.goal)+" requested.");
+   let target=D.trimSilence(D.resample(await synth(text,"target"),24000));
+   if(target.length<D.SR||target.length>D.SR*70)
+    throw Error("Pocket target audio duration is outside the allowed range");
+   let sourceWav=null;
+   if(paired){
+    notice("Recording "+(idx+1)+": generating the optional SECOND voice silently…");
+    const other=D.trimSilence(D.resample(await synth(text,source),24000));
+    if(other.length<D.SR||other.length>D.SR*70)
+     throw Error("Pocket source recording duration is invalid");
+    sourceWav=D.wav(D.stretch(other,target.length));
+   }
+   const record={
+    id:"pair-"+String(idx).padStart(5,"0"),index:idx,text,
+    seconds:target.length/D.SR,source:sourceWav,target:D.wav(target),
+    sourceVoice:source,targetVoice:$("trainer-target").value,reference:hash,mode,
+    alignment:paired?"Two independent TTS renders, duration-normalized, NOT phoneme-aligned":
+     "Target speaker TTS only; not a teacher-student conversion training pair",
+    createdAt:new Date().toISOString()
+   };
+   await D.savePair(record);
+   S.cursor++;S.pairs++;S.seconds+=record.seconds;
+   if(paired)S.paired++;
+   await D.putMeta("progress",{cursor:S.cursor,hash,source,mode,target:$("trainer-target").value});
    render();
-   notice("Saved "+S.pairs+" Pocket speech pairs ("+clock(S.seconds)+
-    " / "+clock(S.goal)+"). Progress is saved after each completed pair.");
-   await new Promise(ok=>setTimeout(ok,10));
+   notice("Saved "+S.pairs+" cloned recordings ("+clock(S.seconds)+
+    "). Entire batch remains silent and resumable.");
+   await new Promise(resolve=>setTimeout(resolve,10));
   }
-  if(!S.cancel)notice("Synthetic speech goal reached: "+clock(S.seconds)+
-   ". Download your WAV ZIP or try the experimental student trainer.");
- }catch(e){notice("Paused after "+clock(S.seconds)+" saved. "+e.message,true)}
+  if(!S.cancel)notice("Completed "+clock(S.seconds)+" of selected speaker speech. "+
+   (paired?"Experimental pairs were saved silently.":"Only your target voice was generated.")+
+   " Download the WAV ZIP to keep a copy.");
+ }catch(error){notice("Stopped safely after "+clock(S.seconds)+" saved. "+error.message,true)}
  finally{
-  if(app.player&&originalPlay)app.player.playAudio=originalPlay;
+  app.silentBatchMode=oldSilence;
   S.running=false;S.cancel=false;targetPCM=null;loadedCustomKey=null;render();
  }
 }
