@@ -32,6 +32,10 @@ jobs:
           opt=ort.SessionOptions()
           opt.intra_op_num_threads=1
           opt.inter_op_num_threads=1
+          # ONNX Runtime CPU 1.24+ introduced an unrelated SimplifiedLayerNorm
+          # constant-fold fusion crash on this FP16 graph; the browser uses
+          # ORT Web 1.22 basic optimizations instead.
+          opt.graph_optimization_level=ort.GraphOptimizationLevel.ORT_DISABLE_ALL
           cv=ort.InferenceSession("/tmp/contentvec.onnx",sess_options=opt,providers=["CPUExecutionProvider"])
           print("CONTENTVEC INPUTS",[(x.name,x.shape,x.type) for x in cv.get_inputs()],flush=True)
           print("CONTENTVEC OUTPUTS",[(x.name,x.shape,x.type) for x in cv.get_outputs()],flush=True)
