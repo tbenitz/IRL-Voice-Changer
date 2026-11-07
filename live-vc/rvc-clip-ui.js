@@ -12,6 +12,7 @@
   let active=null;
   function cleanup(){
     const state=active;active=null;
+    window.__IRL_RVC_clipBusy=false;
     if(state){
       state.cancelled=true;
       try{state.worker?.terminate()}catch(_){}
@@ -97,6 +98,7 @@
     const prior=runtime();
     if(prior?.busy){status("Another model operation is already running. Finish it before starting a preview.",true);return}
     active={cancelled:false,worker:null,reject:null};
+    window.__IRL_RVC_clipBusy=true;
     const state=active;
     $("rvc-run").disabled=true;$("get-core").disabled=true;$("rvc-cancel").disabled=false;
     $("rvc-output").hidden=true;$("rvc-save").hidden=true;
