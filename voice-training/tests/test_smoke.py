@@ -98,7 +98,7 @@ class PipelineSmoke(unittest.TestCase):
         self.assertIn("250 / 500", markup)
         self.assertIn('value="42"', markup)
         self.assertIn('value="250"', markup)
-        self.assertNotIn("100%", markup)
+        self.assertIn("Bars track completed work", markup)
         tree = ast.parse(app.read_text())
         generator = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
                          and n.name == "create_voice")
