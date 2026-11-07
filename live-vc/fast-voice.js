@@ -16,7 +16,7 @@ const app={token:0,loading:false,active:false,worker:null,stream:null,ctx:null,
  source:null,capture:null,gain:null,sources:new Set(),abort:null,inFlight:false,pending:null,
  nextPlayTime:0,drops:0,chunkFrames:8192,historySamples:16000,lastCapture:0,
  workerBlobUrl:null,verifiedWorkerBuild:false,
- audit:null,inFlightSource:null,auditUrls:[]};
+ audit:null,inFlightSource:null,auditUrls:[],autoLevelFactor:1};
 const CACHE="irl-fast-neural-voice-models", STORE="weights";
 async function loadVerifiedWorker(){
  // Fetch tiny worker (not voice weights) using no browser/CDN cache.
@@ -191,7 +191,7 @@ async function stop(message){
  try{await app.ctx?.close()}catch(_){}
  Object.assign(app,{abort:null,worker:null,ctx:null,stream:null,source:null,capture:null,
   gain:null,inFlight:false,pending:null,nextPlayTime:0,lastCapture:0,
-  inFlightSource:null,
+  inFlightSource:null,autoLevelFactor:1,
   workerBlobUrl:null,verifiedWorkerBuild:false});
  $("download").hidden=true;
  toggle();badge("OFF · MUTED");
@@ -281,6 +281,22 @@ function play(d){
  const rtf=Number(d.rtf)||0,elapsed=Number(d.inferenceMs)||0;
  $("rtf").textContent=rtf.toFixed(2)+"×";
  $("inference").textContent=Math.round(elapsed);
+ // Use ONLY measured input/output RMS to adjust the gain applied to the
+ // already-inferred neural speech. Never mix in source microphone audio.
+ const rawIn=Number(d.inputRms),rawOut=Number(d.outputRms);
+ if($("auto-level").checked&&Number.isFinite(rawIn)&&Number.isFinite(rawOut)
+    &&rawIn>.015&&rawOut>.004){
+  const desired=Math.max(.7,Math.min(3,rawIn/rawOut));
+  app.autoLevelFactor=.75*app.autoLevelFactor+.25*desired;
+ }else if(!$("auto-level").checked){
+  app.autoLevelFactor=1;
+ }
+ app.gain.gain.setTargetAtTime(
+  (Number($("volume").value)/100)*app.autoLevelFactor,ctx.currentTime,.12);
+ $("auto-level-status").textContent=$("auto-level").checked
+  ?"Neural playback normalization: "+app.autoLevelFactor.toFixed(2)+
+    "× based on actual ONNX output level. This adjusts volume ONLY."
+  :"Auto-level disabled: pure ONNX volume controlled by output slider.";
  const voiced=Number(d.inputRms)>.012,correlation=Number(d.correlation);
  const delta=Number(d.changeRatio);
  $("wave-change").textContent=voiced&&Number.isFinite(delta)?(delta*100).toFixed(1)+"%":"—";
@@ -397,7 +413,7 @@ async function start(){
  if(!window.isSecureContext||!window.AudioWorkletNode||!navigator.mediaDevices?.getUserMedia){
   info("Requires Chrome over HTTPS with microphone and AudioWorklet permission.",true);return;
  }
- app.loading=true;app.drops=0;app.inFlight=false;app.pending=null;
+ app.loading=true;app.drops=0;app.inFlight=false;app.pending=null;app.autoLevelFactor=1;
  app.chunkFrames=Number($("chunk").value)||8192;
  app.historySamples=Number($("history").value)||16000;
  $("drops").textContent="0";$("lag").textContent="—";$("inference").textContent="—";$("rtf").textContent="—";
@@ -455,7 +471,16 @@ $("pitch-finish").addEventListener("input",()=>{
 updatePitchLabel();
 $("volume").addEventListener("input",()=>{
  $("volume-value").textContent=$("volume").value+"%";
- if(app.gain&&app.ctx)app.gain.gain.setTargetAtTime(Number($("volume").value)/100,app.ctx.currentTime,.015);
+ if(app.gain&&app.ctx)app.gain.gain.setTargetAtTime(
+  Number($("volume").value)/100*app.autoLevelFactor,app.ctx.currentTime,.015);
+});
+$("auto-level").addEventListener("change",()=>{
+ if(!$("auto-level").checked)app.autoLevelFactor=1;
+ $("auto-level-status").textContent=$("auto-level").checked
+  ?"Auto playback loudness matching enabled; only model output is amplified."
+  :"Auto loudness matching disabled. No original microphone audio will be played.";
+ if(app.gain&&app.ctx)app.gain.gain.setTargetAtTime(
+  Number($("volume").value)/100*app.autoLevelFactor,app.ctx.currentTime,.10);
 });
 $("start").addEventListener("click",()=>{void start()});
 $("audit-start").addEventListener("click",()=>{
