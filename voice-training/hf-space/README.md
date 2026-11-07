@@ -10,6 +10,13 @@ suggested_hardware: t4-medium
 
 # Custom neural voice trainer — GPU Space
 
+## Runtime errors fixed (Nov 7, 2026)
+
+The original Dockerfile configured `HF_HOME=/data/hf-cache` and prepared `/data` during Docker build, which fails in environments without a writable `/data` mount. **The updated Dockerfile and `app.py` no longer require `/data`.** Temporary jobs, downloads and caches use `/home/user/voice-data`, owned by UID 1000. Recopy **both** files to the root of your actual Space and rebuild; updating the GitHub template does **not** update a separate Hugging Face repository automatically.
+
+The message **"NVIDIA Driver was not detected"** means the running container cannot access an NVIDIA GPU. In the Hugging Face Space open **Settings → Space hardware**, assign a dedicated **T4 GPU** and restart. `suggested_hardware` in YAML does not provision a GPU. The interface can start on CPU, but it will refuse training rather than spending time trying to train without CUDA.
+
+
 **Upload one file, get one download:** WAV, MP3, FLAC, M4A, OGG or OPUS from **2 seconds to 2 hours**. The source is decoded only for its **first 3 minutes** and the best roughly **30-second contiguous speaking window** is selected as the reference (or the full clip if shorter).
 
 The GPU runs:
