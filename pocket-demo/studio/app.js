@@ -37,6 +37,7 @@ class PocketVoice {
     this.player = null;
     this.audioContext = null;
     this.isGenerating = false;
+    this.silentBatchMode = false; // Dataset synthesis: collect speech PCM, never open or play audio.
     this.isWorkerReady = false;
     this.isVoiceEncoding = false;
 
@@ -826,10 +827,16 @@ class PocketVoice {
     const text = this.el.textInput.value.trim();
     if (!text) return;
 
-    await this.ensureAudioContext();
-    if (this.audioContext.state === "suspended") await this.audioContext.resume();
-    // Ensure AudioWorklet is fully loaded before first generation
-    await this.player.initPromise;
+    // Dataset generation is NOT a playback operation. Do not create or resume
+    // an AudioContext / PCMPlayer just to synthesize WAV training examples.
+    if (!this.silentBatchMode) {
+      await this.ensureAudioContext();
+      if (this.audioContext.state === "suspended") await this.audioContext.resume();
+      await this.player.initPromise;
+    } else {
+      // Explicitly flush any older preview that was already playing.
+      this.player?.reset();
+    }
 
     this.isGenerating = true;
     this.generationStartTime = performance.now();
@@ -839,7 +846,7 @@ class PocketVoice {
 
     if (this.lastAudioUrl) { URL.revokeObjectURL(this.lastAudioUrl); this.lastAudioUrl = null; }
 
-    this.player.reset();
+    if (!this.silentBatchMode) this.player.reset();
     this.el.btnGenerate.classList.add("is-loading");
     this.el.btnGenerate.disabled = true;
     this.el.btnStop.style.display = "flex";
@@ -854,7 +861,7 @@ class PocketVoice {
   stop() {
     this.isGenerating = false;
     this.worker.postMessage({ type: "stop" });
-    this.player.reset();
+    this.player?.reset();
     this.resetUI();
   }
 
@@ -862,7 +869,9 @@ class PocketVoice {
     if (!this.isGenerating) return;
     const pcm = new Float32Array(data);
     this.currentChunks.push(pcm);
-    this.player.playAudio(pcm);
+    // Prevent both target/source dataset voices from playing over speakers.
+    // This works even on the FIRST generation, before the player is created.
+    if (!this.silentBatchMode) this.player.playAudio(pcm);
 
     if (metrics?.isFirst) {
       this.el.statTTFB.textContent = Math.round(performance.now() - this.generationStartTime);
@@ -877,6 +886,13 @@ class PocketVoice {
 
   handleStreamEnd() {
     this.isGenerating = false;
+    if (this.silentBatchMode) {
+      // Speech bytes are already in currentChunks. The trainer captures them
+      // directly, without creating a user-facing WAV preview or audio player.
+      this.deferStreamEnd = false;
+      this.resetUI();
+      return;
+    }
     this.player.notifyStreamEnded();
     const status = this.player.getPlaybackStatus();
     if (status.worklet.bufferLevelSamples > 0) {
