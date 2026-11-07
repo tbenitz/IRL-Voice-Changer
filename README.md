@@ -6,9 +6,9 @@
 
 ## One-click RVC voice setup (Chromebook / Chrome)
 
-Open [Live AI RVC](https://tbenitz.github.io/IRL-Voice-Changer/live-vc/#rvc-live), select one of four built-in licensed RVC v2 target voices, and press **Download selected RVC & start mic**. The browser downloads the selected ~58 MB voice checkpoint plus ~95 MB ContentVec and ~99 MB RMVPE support models. The first download totals roughly 250 MB; files are cached in IndexedDB when storage permits. Subsequent visits reuse downloaded files if the browser retains the cache.
+Open [Live AI RVC](https://tbenitz.github.io/IRL-Voice-Changer/live-vc/#rvc-live), select one of four built-in licensed RVC v2 target voices, and press **Download selected RVC & start mic**. The browser downloads a selected voice checkpoint plus **189 MB browser-compatible FP16 ContentVec** and **181 MB FP16 RMVPE** models. The first download is approximately **430 MB** including the selected voice; files are cached in IndexedDB when storage permits. Subsequent visits reuse downloaded files if the browser retains the cache.
 
-Four preset checkpoints come from [Ampixa Labs Nepali RVC Voices v1](https://huggingface.co/ampixa/nepali-rvc-voices-v1) under **CC BY 4.0**. The ONNX generators have fixed 512-frame inputs, which the local streaming worker pads and trims. The MIT-licensed shared Q8 supporting models come from [TigreGotico/voiceclonnx-rvc](https://huggingface.co/TigreGotico/voiceclonnx-rvc). All voice and model downloads are static assets; **no user microphone audio goes to Hugging Face**.
+Four preset checkpoints come from [Ampixa Labs Nepali RVC Voices v1](https://huggingface.co/ampixa/nepali-rvc-voices-v1) under **CC BY 4.0**. The ONNX generators have fixed 512-frame inputs, which the local streaming worker pads and trims. The FP16 shared support graphs come from [Ampixa's browser RVC runtime](https://huggingface.co/ampixa/rvc-browser-runtime), whose source models are **GPL-3.0**. The prior Q8 files contained unsupported `ConvInteger` operations and are not used. All voice and model downloads are static assets; **no user microphone audio goes to Hugging Face**.
 
 For a pre-mic recording comparison, use **Test selected voice (first 3 sec)** in the recording section after uploading a short source MP3/WAV. It uses the same local RVC ONNX worker and checkpoints, not an external demo or text-to-speech.
 
@@ -18,7 +18,7 @@ For a pre-mic recording comparison, use **Test selected voice (first 3 sec)** in
 
 The live microphone page is **client-side AudioWorklet DSP**: microphone PCM is transformed by granular pitch processing, filtering, and gating and sent to the local output. It **is not an RVC/Beatrice/Seed-VC model**. The fail-closed audio chain never automatically forwards dry microphone audio.
 
-The separate RVC recording panel calls a **real ONNX RVC v2** model pipeline (ContentVec → RMVPE → RVC generator) using the browser-based `rvc-web-runtime` package. It accepts an **actual trained ONNX voice checkpoint** plus audio and loads ~194 MB of optional quantized supporting models on demand (unverified for compatibility with every checkpoint). This is **file-to-file inference, not real-time model streaming**. Chromebook memory and runtime compatibility are unverified, and browser processing may fail.
+The separate RVC recording panel calls the same persistent-session local RVC v2 ONNX worker as the live microphone for a short recorded test (ContentVec → RMVPE → RVC generator). It accepts an **actual trained ONNX voice checkpoint** plus audio and uses the same browser-compatible FP16 support models. These are heavier than the previous Q8 files, so an 8 GB Chromebook could still run out of memory. This recording preview is **file-to-file inference, not continuous live streaming**. Chromebook memory and runtime compatibility are unverified, and browser processing may fail.
 
 A new **experimental browser neural RVC microphone pipeline** is implemented at [Live AI RVC](live-vc/#rvc-live). It holds ContentVec, RMVPE, and RVC ONNX sessions in a persistent Web Worker, processes microphone blocks, displays lag and processing time, and mutes/drops audio rather than playing the original voice on failure. **This has passed static/synthetic tests but has not passed real model inference or end-to-end latency testing on an 8 GB Chromebook**; it may be too slow or unable to load the model. A 3-second MP3 is reference audio, not a trained RVC checkpoint; zero-shot reference conversion requires a separate compatible voice-conversion engine. The other requested neural engines have not been ported into the local browser and are not represented by embedded Hugging Face iframes. Pocket TTS is a separate text-to-speech experiment, **not voice conversion**.
 
@@ -44,7 +44,7 @@ Visit the [Local Test Lab](https://tbenitz.github.io/IRL-Voice-Changer/online-te
 | **LLVC** | [Official audio comparisons](https://koeai.github.io/llvc-demo/). **Listening-only:** no verified hosted custom-recording inference endpoint currently connected. |
 | **Pocket TTS** | [Real browser Pocket ONNX](https://tbenitz.github.io/IRL-Voice-Changer/pocket-demo/) with same-document microphone speech recognition and text-to-speech generation. |
 
-These hosted demos run on independent third-party servers. Queues, availability, upload privacy, GPU quotas and models are outside this repository's control. The embedded demo can be blank due to browser privacy restrictions; in that case click **Open full demo**. None of these hosted demos gives your browser a systemwide virtual microphone.
+The external demonstration links above are documentation for the upstream projects, not embedded conversion iframes. The local Chromebook testing page uses real browser-side code. None of these demos can create a systemwide virtual microphone in ChromeOS.
 
 ### Pocket microphone demo repair
 
