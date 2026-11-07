@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#07101c">
+<title>IRL Voice Changer — Fast AI / Live Neural</title>
+<meta name="description" content="Fully on-device fast low-latency neural microphone voice conversion for ChromeOS. 13.7 MB ONNX causal streaming model, no server upload, no TTS.">
+<style>
+:root{color-scheme:dark;--bg:#08111e;--panel:#112335;--line:#2a4a5d;--mint:#62e8d5;--soft:#9ebdcc;--ink:#e9f9ff;--red:#fc98a0}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse 70% 42% at 40% 0,#19485455,transparent),var(--bg);font:15px/1.5 system-ui,-apple-system,Segoe UI,Arial,sans-serif;color:var(--ink)}
+a{color:var(--mint)}header{border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px max(18px,calc((100% - 1120px)/2));flex-wrap:wrap}
+header strong{letter-spacing:.08em;font-size:13px}header strong span{color:var(--mint)}nav{display:flex;gap:18px;flex-wrap:wrap;font-size:12px}nav a{text-decoration:none;color:var(--soft)}
+main{max-width:1120px;margin:auto;padding:38px 18px 70px}
+.eyebrow{font-size:11px;font-weight:850;color:var(--mint);letter-spacing:.14em;text-transform:uppercase}
+h1{font-size:clamp(35px,5vw,59px);letter-spacing:-.055em;line-height:1.08;margin:13px 0 14px}h1 em{font-style:normal;color:var(--mint)}
+.lead{max-width:780px;color:#b5ccda;line-height:1.65;margin:0 0 22px}
+.layout{display:grid;grid-template-columns:1.35fr 1fr;gap:18px;margin:24px 0}
+.panel{background:linear-gradient(160deg,#13293a,#101c2e);border:1px solid var(--line);border-radius:17px;padding:25px;box-shadow:0 12px 40px #0004}
+.panel h2{margin:5px 0 13px;letter-spacing:-.025em;font-size:22px}.panel p{font-size:13px;color:var(--soft)}
+.status{display:inline-block;font-size:12px;border:1px solid #496477;border-radius:50px;padding:7px 11px;color:#b9d7e4}
+.status.live{background:#154d45;color:#8cffe5;border-color:#63e2bb}.status.bad{background:#51212b;color:#ffc8cf;border-color:#a95764}
+.top{display:flex;align-items:start;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:15px;font-size:12px;font-weight:700}
+.field small{color:var(--soft);font-weight:400;font-size:11px}
+select,input[type=file]{width:100%;border:1px solid #426174;background:#0d1e2c;color:var(--ink);border-radius:9px;padding:10px}
+input[type=range]{width:100%;accent-color:var(--mint)}
+.formgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+button{font:inherit;font-weight:800;border-radius:10px;padding:13px 16px;cursor:pointer}
+button:disabled{opacity:.45;cursor:not-allowed}.primary{background:var(--mint);color:#09232c;border:0}.secondary{background:#1c3a50;border:1px solid #49667a;color:var(--ink)}
+.actions{display:flex;gap:9px;margin:17px 0;flex-wrap:wrap}.actions button{flex:1}
+progress{width:100%;height:13px;accent-color:var(--mint)}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stat{padding:13px;border:1px solid #29495f;background:#0e2536;border-radius:12px}
+.stat b{display:block;font-size:25px;letter-spacing:-.035em;font-variant-numeric:tabular-nums}
+.stat span{font-size:11px;color:var(--soft)}
+.notice{border:1px solid #71623c;background:#322c1c;color:#e9d7a9;font-size:12px;padding:14px;border-radius:11px;margin-top:18px}
+#status-text{background:#09202d;border:1px solid #2e5463;border-radius:11px;padding:13px;min-height:52px;font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}
+#status-text.bad{color:#ffc2c8}
+.bar{height:10px;background:#081a24;border-radius:99px;overflow:hidden;margin:11px 0}.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#529aca,var(--mint));transition:width .13s}
+.fine{font-size:11px;color:var(--soft)}footer{color:var(--soft);font-size:12px;margin-top:35px}
+@media(max-width:800px){.layout{grid-template-columns:1fr}.panel{padding:19px}}
+@media(max-width:440px){.formgrid{grid-template-columns:1fr}main{padding:25px 13px 50px}.panel{padding:15px}}
+</style>
+</head>
+<body>
+<header><strong>◉ IRL <span>VOICE CHANGER</span></strong><nav><a href="../">Home</a><a href="./">Original live DSP + RVC</a><a href="./#rvc-live">Heavy RVC</a></nav></header>
+<main>
+<span class="eyebrow">Fast neural voice conversion • ChromeOS • local processing</span>
+<h1>Live AI voice.<br><em>Without giant RVC models.</em></h1>
+<p class="lead">A real, trained streaming neural voice converter. It uses a single 13.7 MB causal ONNX model, not ContentVec + RMVPE + a five-second RVC generator. Everything runs in your browser, with a fail-closed microphone and measured performance.</p>
+<div class="layout">
+<section class="panel">
+  <div class="top"><div><span class="eyebrow">Neural microphone conversion</span><h2>Fast AI Studio</h2></div><span class="status" id="badge">OFF · MUTED</span></div>
+  <label class="field">Neural target voice
+    <select id="voice">
+      <option value="hfg">Female — streaming LLVC student (13.7 MB)</option>
+      <option value="old_hq">Female — alternate HQ checkpoint (13.7 MB)</option>
+      <option value="old">Female — original checkpoint (13.7 MB)</option>
+      <option value="custom">Upload my own compatible causal 16kHz ONNX</option>
+    </select>
+    <small>Real trained speaker voices, not pitch presets. Custom models must expose <code>audio_in → audio_out</code>; ordinary RVC .onnx voice files are NOT compatible here.</small>
+  </label>
+  <label class="field" id="custom-field" hidden>Compatible custom ONNX model<input id="model-file" type="file" accept=".onnx"></label>
+  <div class="formgrid">
+    <label class="field">Microphone chunk
+      <select id="chunk">
+        <option value="1024">64 ms · fastest response</option>
+        <option value="2048" selected>128 ms · recommended</option>
+        <option value="4096">256 ms · more stable</option>
+        <option value="8192">512 ms · slow hardware</option>
+      </select>
+      <small>Model must finish each chunk before the next arrives.</small>
+    </label>
+    <label class="field">Previous audio context
+      <select id="history">
+        <option value="2048">128 ms · max speed</option>
+        <option value="4096" selected>256 ms · balanced</option>
+        <option value="8000">500 ms · higher context</option>
+        <option value="16000">1000 ms · highest context, slower</option>
+      </select>
+      <small>Increasing this can improve sound consistency but slows inference.</small>
+    </label>
+  </div>
+  <label class="field">Converted output level <span id="volume-value">80%</span>
+    <input id="volume" type="range" min="0" max="150" value="80">
+  </label>
+  <div class="actions"><button id="start" class="primary">Start real-time AI mic</button><button id="stop" class="secondary" disabled>Stop and mute</button></div>
+  <progress id="download" max="100" value="0" hidden></progress>
+  <p class="fine" id="download-status">Model downloads once on first use and is cached when Chrome storage permits. No microphone audio leaves your device.</p>
+  <div id="status-text" role="status" aria-live="polite">Ready. The microphone is off, original audio is muted, and no AI model is running.</div>
+  <div class="notice">Wear headphones. If the ONNX worker crashes, slows down excessively, or cannot run, converted output is muted. Your unmodified microphone is never automatically sent to speakers.</div>
+</section>
+<section class="panel">
+  <span class="eyebrow">Measured on your device</span><h2>Neural performance</h2>
+  <div class="stats">
+    <div class="stat"><b id="lag">—</b><span>Estimated mic-to-playback delay (ms)</span></div>
+    <div class="stat"><b id="inference">—</b><span>Latest neural inference (ms)</span></div>
+    <div class="stat"><b id="rtf">—</b><span>Real-time factor (under 1.0 is good)</span></div>
+    <div class="stat"><b id="drops">0</b><span>Audio blocks dropped</span></div>
+  </div>
+  <p>Microphone input level</p><div class="bar"><i id="input-meter"></i></div>
+  <p>Changed voice output level</p><div class="bar"><i id="output-meter"></i></div>
+  <p id="performance-note">No benchmark measured yet.</p>
+  <div style="height:1px;background:#2d4b5e;margin:23px 0"></div>
+  <span class="eyebrow">What model is this?</span>
+  <p>This is a causal LLVC-style streaming student model trained from an RVC teacher, published by <a href="https://github.com/ultrapg/hevoicechanger" target="_blank" rel="noopener">HEVoicechanger</a> under GPL-3.0. It is genuine neural speech-to-speech conversion, but it is <strong>not</strong> an ordinary RVC checkpoint and cannot directly use most RVC voice downloads.</p>
+  <p>The 13.7 MB model passed a real ONNX Runtime Web WASM test on a Linux CPU. ChromeOS performance and voice quality may differ. It processes 16 kHz mono, so audio fidelity will be lower than 48 kHz RVC.</p>
+</section>
+</div>
+<footer>IRL Voice Changer • Pure client-side AudioWorklet and ONNX Runtime Web WASM • Your audio is not uploaded • <a href="./">Other modes</a></footer>
+</main>
+<script defer src="./fast-voice.js?v=20261106-f1"></script>
+</body></html>
