@@ -3,7 +3,8 @@ FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    HF_HOME=/data/hf-cache \
+    HF_HOME=/home/user/voice-data/hf-cache \
+    VOICE_WORKSPACE=/home/user/voice-data \
     GRADIO_SERVER_NAME=0.0.0.0 \
     GRADIO_SERVER_PORT=7860
 
@@ -31,8 +32,10 @@ RUN git clone --depth 1 https://github.com/tbenitz/IRL-Voice-Changer.git /app/ir
 COPY app.py /app/app.py
 
 RUN useradd -m -u 1000 user && \
-    mkdir -p /data/voice-jobs /data/voice-cache /data/hf-cache && \
-    chown -R user:user /data /app/app.py /app/seed-vc /app/llvc-upstream
+    mkdir -p /home/user/voice-data/voice-jobs /home/user/voice-data/voice-cache /home/user/voice-data/hf-cache /home/user/voice-data/tmp && \
+    chown -R user:user /home/user/voice-data /app/app.py /app/seed-vc /app/llvc-upstream
+
+ENV HOME=/home/user TMPDIR=/home/user/voice-data/tmp
 
 USER user
 EXPOSE 7860
