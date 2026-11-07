@@ -11,9 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
       - name: Install CPU ONNX inference runtime
         run: |
-          python -m pip install --quiet --disable-pip-version-check "onnxruntime==1.24.4" "onnx>=1.19" "numpy<3"
+          python -m pip install --quiet --disable-pip-version-check "onnxruntime==1.22.1" "onnx>=1.19" "numpy<2"
       - name: Download exact ContentVec and built-in voice ONNX models
         run: |
           set -euo pipefail
@@ -79,4 +82,40 @@ jobs:
           expected_rm=rm.graph.input[0]
           print("PITCH INPUT CONTRACT",expected_rm.name,dims(expected_rm),flush=True)
           assert len(dims(expected_rm)) in (2,3),"Unsupported RMVPE input rank"
+
+          # CPU execution with ORT 1.22 is a compatibility smoke test, not a
+          # Chromebook browser latency benchmark. This uses the three real ONNX files.
+          import time
+          print("START LIVE MODEL SMOKE",flush=True)
+          rm_session=ort.InferenceSession("/tmp/rmvpe.onnx",sess_options=opt,providers=["CPUExecutionProvider"])
+          f0raw=rm_session.run(None,{"waveform":audio.reshape(1,-1),
+                       "threshold":np.asarray([.03],dtype=np.float32)})[0]
+          print("REAL RMVPE",f0raw.shape,"range",float(np.nanmin(f0raw)),float(np.nanmax(f0raw)),flush=True)
+          assert np.all(np.isfinite(f0raw)),"RMVPE returned nonfinite output"
+          generator=ort.InferenceSession("/tmp/voice.onnx",sess_options=opt,providers=["CPUExecutionProvider"])
+          unit12=result[[x.name for x in cv.get_outputs()].index("unit12")]
+          real_frames=min(512,unit12.shape[1]*2)
+          phone=np.zeros((1,512,768),dtype=np.float32)
+          phone[0,:real_frames]=np.repeat(unit12[0],2,axis=0)[:real_frames]
+          pitch=np.ones((1,512),dtype=np.int64)
+          f0=np.zeros((1,512),dtype=np.float32)
+          useful=min(f0raw.shape[-1],real_frames)
+          f0[0,:useful]=f0raw.reshape(-1)[:useful]
+          for i,hz in enumerate(f0[0,:useful]):
+              if hz>0: pitch[0,i]=max(1,min(255,round((1127*np.log(1+hz/700)-1127*np.log(1+50/700))*254/
+                  (1127*np.log(1+1100/700)-1127*np.log(1+50/700))+1)))
+          feed={
+             "phone":phone,
+             "phone_lengths":np.asarray([512],dtype=np.int64),
+             "pitch":pitch,
+             "nsff0":f0,
+             "sid":np.asarray([0],dtype=np.int64),
+             "noise":np.random.default_rng(3).standard_normal((1,192,512)).astype(np.float32)
+          }
+          start=time.monotonic()
+          wav=generator.run(None,feed)[0]
+          print("REAL RVC GENERATION",wav.shape,"dtype",wav.dtype,
+                "finite",bool(np.all(np.isfinite(wav))),"elapsed_seconds",round(time.monotonic()-start,2),flush=True)
+          assert np.all(np.isfinite(wav)),"Generator returned nonfinite audio"
+          print("PASS: three downloaded ONNX models executed actual inference on CPU",flush=True)
           PY
