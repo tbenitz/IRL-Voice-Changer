@@ -23,10 +23,14 @@ function resetHistory(count){
  history=new Float32Array(count);
 }
 async function loadModel(bytes){
- if(!(bytes instanceof ArrayBuffer)||bytes.byteLength<100000)
-   throw Error("A compatible non-empty streaming ONNX model file is required.");
+ // Pocket's locally trained 4-layer ONNX can be ~66 KB. Reject empty data,
+ // not small-but-valid models: ONNX Runtime checks the graph itself.
+ if(!(bytes instanceof ArrayBuffer)||bytes.byteLength<128)
+   throw Error("The streaming ONNX file is empty, invalid, or incomplete ("+
+     (bytes?.byteLength??0)+" bytes).");
  await setupRuntime();
- send("stage",{text:"Loading 13.7 MB streaming AI model into WebAssembly…"});
+ send("stage",{text:"Initializing "+(bytes.byteLength/1024).toFixed(1)+
+   " KB neural ONNX model in WebAssembly…"});
  session=await ort.InferenceSession.create(bytes,{
   executionProviders:["wasm"],graphOptimizationLevel:"basic",
   enableMemPattern:false,enableCpuMemArena:false
