@@ -46,7 +46,8 @@ async function exportCausalOnnx(tfModel,metadata={}){
   const raw=layer.getWeights();
   if(raw.length!==2)throw Error("Expected kernel + bias in pocket_conv"+i);
   const [kernel,bias]=await Promise.all(raw.map(async t=>({shape:t.shape,values:Float32Array.from(await t.data())})));
-  raw.forEach(t=>t.dispose());
+  // getWeights() may expose live LayerVariable-backed tensors. Do not dispose
+  // these here; the caller still needs the trained model for parity validation.
   if(kernel.shape.length!==3||bias.shape.length!==1)throw Error("Unsupported trained Conv1D shape");
   weights.push({kernel:convWeights(kernel),bias});
  }
