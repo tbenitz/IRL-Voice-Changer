@@ -43,7 +43,7 @@ for(const expected of [
  'id="start"','id="stop"','id="live-status"','id="rvc-model"',
  'id="rvc-audio"','id="rvc-vec"','id="rvc-pitch"',
  'source.connect(node);','node.connect(gain);','node.connect(recDest);',
- 'api.runPipelineInWorker','Only AudioWorklet-processed audio'
+ 'src="./rvc-clip-ui.js','src="./model-presets.js','Only AudioWorklet-processed audio'
 ])assert(html.includes(expected),expected+" is required");
 assert(!html.includes("source.connect(ctx.destination)"),"No dry microphone route is allowed");
 assert(home.includes('href="./live-vc/"'),"Main CTA must open actual live changer");
