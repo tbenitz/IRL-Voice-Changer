@@ -42,6 +42,7 @@ jobs:
           test -f live-vc/rvc-mic-worklet.js
           test -f live-vc/rvc-stream-worker.js
           test -f live-vc/rvc-live-ui.js
+          test -f live-vc/model-presets.js
           test -f pocket-demo/index.html
           test -f pocket-demo/diagnostics.html
           test -f pocket-demo/studio/index.html
@@ -56,6 +57,7 @@ jobs:
           node --check live-vc/rvc-mic-worklet.js
           node --check live-vc/rvc-stream-worker.js
           node --check live-vc/rvc-live-ui.js
+          node --check live-vc/model-presets.js
           node tests/test_live_voice.cjs
           node tests/test_rvc_live.cjs
           node tests/test_rvc_pipeline_stub.cjs
