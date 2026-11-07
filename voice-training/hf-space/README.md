@@ -10,6 +10,14 @@ suggested_hardware: t4-medium
 
 # Custom neural voice trainer — GPU Space
 
+## Fix: LLVC port collision after 400/400 pairs (Nov 7, 2026)
+
+The original upstream `KoeAI/LLVC/train.py` forces distributed process group `MASTER_PORT=12355`. In the reported private T4 Space, this produced `RuntimeError: EADDRINUSE` as soon as training launched, even though **400/400 teacher pairs were successfully created**. The patched `voice-training/train_full_llvc.py` now replaces that hard-coded assignment with an environment-aware default and assigns a random available localhost port for each training run.
+
+The Gradio UI now includes **Recover an interrupted job**. Enter an existing 12-character ID (for example `699d49e13cea`) to resume its saved dataset if the same disk remains accessible, *without rerunning teacher conversion*. The **Download saved pairs before rebuilding** button archives existing teacher WAV pairs and reference audio in a ZIP. It works only if the original job files still exist and you have deployed the updated app without losing the original disk. Uploads are not automatically restored after a rebuild.
+
+**Critical:** the default `/home/user/voice-data` is ephemeral on Spaces. Rebuilding, stopping, or changing hardware may erase it. Hugging Face recommends an attached read/write Storage Bucket for persistence. When using a bucket mounted at e.g. `/data`, set the Space's `VOICE_WORKSPACE` environment variable to `/data` after verifying the mount is writable. This will make future resumed jobs persistent; it cannot retroactively recover files that were already deleted. Hugging Face *Dev Mode* (PRO/Team/Enterprise) can sometimes let you patch and resume **in the existing container** without a rebuild; standard code commits always rebuild the underlying image.
+
 ## Runtime errors fixed (Nov 7, 2026)
 
 The original Dockerfile configured `HF_HOME=/data/hf-cache` and prepared `/data` during Docker build, which fails in environments without a writable `/data` mount. **The updated Dockerfile and `app.py` no longer require `/data`.** Temporary jobs, downloads and caches use `/home/user/voice-data`, owned by UID 1000. Recopy **both** files to the root of your actual Space and rebuild; updating the GitHub template does **not** update a separate Hugging Face repository automatically.
