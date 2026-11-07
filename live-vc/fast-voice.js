@@ -6,7 +6,7 @@
 "use strict";
 const $=id=>document.getElementById(id);
 const MODEL_ROOT="https://raw.githubusercontent.com/ultrapg/hevoicechanger/main/models/";
-const FAST_BUILD="20261107-custom-training-fix-v11";
+const FAST_BUILD="20261107-context-preflight-v12";
 const voices={
  hfg:{name:"female_voice_hfg_new.onnx",bytes:13756183},
  old_hq:{name:"female_voice_old_hq.onnx",bytes:13718163},
@@ -375,7 +375,40 @@ function eventFromWorker(e,token){
    void stop("Unverified or stale neural worker refused. Audio stayed muted.");
    return;
   }
-  badge("MODEL READY");info("Model initialized. Starting microphone…");
+  badge("MODEL READY");
+  // Do not capture the first words until high history settings have passed
+  // a local synthetic real-time throughput check.
+  if(app.historySamples>4096){
+   info("Checking "+Math.round(app.historySamples/16)+
+     " ms context speed before opening the microphone…");
+   app.worker.postMessage({type:"preflight",chunkFrames:app.chunkFrames});
+  }else{
+   info("Model initialized. Starting microphone…");
+   void activateMic(token).catch(err=>{void stop("Microphone failure: "+(err?.message||err)+". Input muted.")});
+  }
+ }else if(d.type==="preflight"){
+  if(!app.loading||!app.worker)return;
+  const old=app.historySamples;
+  app.historySamples=Number(d.historySamples)||old;
+  if(app.historySamples!==old){
+   app.adaptations++;
+   $("history").value=String(app.historySamples);
+  }
+  const tested=Array.isArray(d.measurements)
+    ?d.measurements.map(x=>Math.round(x.historySamples/16)+" ms: "+x.rtf+"×").join(" → "):"";
+  $("performance-note").textContent="Pre-mic speed check "+tested+
+    (app.historySamples!==old?" | auto-reduced context to "+Math.round(app.historySamples/16)+" ms":"");
+  if(!d.sustainable){
+   void stop("This neural model cannot sustain real-time speech even after reducing previous audio history. "+
+     "Measured "+d.rtf+"× real-time at "+Math.round(app.historySamples/16)+
+     " ms context. The microphone was never opened. Select a longer mic chunk or a faster model.");
+   return;
+  }
+  info((app.historySamples!==old
+    ?"The selected "+Math.round(old/16)+" ms history was too slow. Reduced to "+
+      Math.round(app.historySamples/16)+" ms before any speech was recorded."
+    :"The selected context passed the "+d.rtf+"× real-time speed check.")+
+    " Starting microphone…");
   void activateMic(token).catch(err=>{void stop("Microphone failure: "+(err?.message||err)+". Input muted.")});
  }else if(d.type==="audio")play(d);
  else if(d.type==="idle"){
