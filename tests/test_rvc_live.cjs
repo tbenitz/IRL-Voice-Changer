@@ -10,6 +10,8 @@ const get = p => fs.readFileSync(path.join(root,p),"utf8");
 const captureSource=get("live-vc/rvc-mic-worklet.js");
 const workerSource=get("live-vc/rvc-stream-worker.js");
 const controllerSource=get("live-vc/rvc-live-ui.js");
+const presetSource=get("live-vc/model-presets.js");
+const studioSource=get("live-vc/index.html");
 const html=get("live-vc/index.html");
 const comparisons=get("online-test/index.html");
 let Capturer=null, transferred=[];
@@ -60,5 +62,14 @@ assert(html.includes('src="./rvc-live-ui.js'),'Live RVC controller not mounted')
 assert(html.includes('src="./model-presets.js'),"Model auto-download script is not mounted");
 assert(controllerSource.includes('app.worker.postMessage({type:"convert"'),'Audio chunks not routed to actual neural worker');
 assert(!controllerSource.includes('app.source.connect(ctx.destination)'),'Dry mic output route detected');
+assert(presetSource.includes("contentvec.fp16.onnx"),"Missing browser FP16 ContentVec model");
+assert(presetSource.includes("rmvpe.fp16.onnx"),"Missing browser FP16 RMVPE model");
+assert(presetSource.includes("ampixa/rvc-browser-runtime/resolve/main/"),"Browser-compatible model repository not used");
+assert(presetSource.includes('irl-rvc-voice-models-v3'),"Must not reuse old Q8 cached models");
+assert(!presetSource.includes('url:HF_BASE+"contentvec_768l12_q8.onnx"'),"ConvInteger Q8 ContentVec still loaded by default");
+assert(!presetSource.includes('url:HF_BASE+"rmvpe_q8.onnx"'),"ConvInteger Q8 RMVPE still loaded by default");
+assert(studioSource.includes("Compatible ContentVec")||studioSource.includes("browser-compatible FP16"),"Missing on-page model compatibility disclosure");
+assert(controllerSource.includes("rvc-stream-worker.js?v=20261106-fp16-v2"),"Streaming worker may be stale");
+
 assert(!html.includes("<iframe")&&!comparisons.includes("<iframe"),"Hosted iframe is forbidden");
 console.log("PASS: microphone outputs silence, streams real PCM to RVC worker, persistent ONNX model inference wired, no iframes or TTS substitution.");
