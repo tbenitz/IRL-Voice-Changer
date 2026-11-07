@@ -108,6 +108,18 @@ vm.runInNewContext(source,context);
    "Live UI needs distinct saved auto-load and manual-file ONNX modes");
  assert(control.includes("requireVoiceChange:true"),
    "Live controller must enforce no-passthrough protection for saved/manual ONNX models");
+ assert(control.includes("app.queue.push(block)")&&!control.includes("app.pending=block"),
+   "Never silently replace one captured speech chunk with another");
+ assert(control.includes('app.requestedHistory=next')&&control.includes('app.worker.postMessage({type:"config",historySamples:next})'),
+   "Long 500/1000ms context must automatically reduce on actual inference overload");
+ assert(source.includes("resetHistory(Number(m.historySamples)||4096,true)"),
+   "Worker must retain speech history when downshifting long context instead of inserting zeros");
+ assert(control.includes("NEURAL OVERLOAD:"),
+   "Real-time inference overrun must stop clearly instead of pretending chopped speech is working");
+ assert(html.includes('<option value="4096" selected>256 ms'),
+   "Restore working pretrained previous-context default; user did not request 1000ms history");
+ assert(control.includes('model.trainingData!=="teacher-parallel"'),
+   "Old unaligned Pocket pseudo-voice must not play as a real custom neural model");
   assert(html.includes('id="rtf"'),"Real-time speed diagnostics missing");
  assert(html.includes('id="wave-change"')&&html.includes('id="wave-corr"'),
   "The UI must show measured neural waveform changes, not just claim AI output");
