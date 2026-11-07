@@ -1,5 +1,6 @@
 """Hugging Face dedicated GPU Space frontend for the real LLVC voice trainer."""
 import os
+from html import escape
 from collections import deque
 from pathlib import Path
 import re
@@ -19,41 +20,67 @@ JOBS = WORKSPACE / "voice-jobs"
 CACHE = WORKSPACE / "voice-cache"
 
 
+def progress_html(pairs=0, updates=0, total_steps=500, stage="Ready",
+                  exported=False, packaged=False):
+    """Two real counters, not a fabricated percentage of total wall time."""
+    pairs = max(0, min(400, int(pairs)))
+    total_steps = max(1, int(total_steps))
+    updates = max(0, min(total_steps, int(updates)))
+    state = ("Bundle ready" if packaged else
+             "ONNX exported" if exported else "Waiting")
+    return (
+        '<div style="display:grid;gap:14px;padding:12px 2px">'
+        f'<strong>{escape(stage)}</strong>'
+        '<div style="display:grid;gap:5px">'
+        f'<span>Teacher pairs: <b>{pairs} / 400</b></span>'
+        f'<progress value="{pairs}" max="400" style="width:100%;height:18px"></progress>'
+        '</div><div style="display:grid;gap:5px">'
+        f'<span>Neural training: <b>{updates} / {total_steps} updates</b></span>'
+        f'<progress value="{updates}" max="{total_steps}" style="width:100%;height:18px"></progress>'
+        '</div>'
+        f'<span>Export and package: {state}</span>'
+        '<small>Bars track completed work, not estimated remaining minutes.</small>'
+        '</div>'
+    )
+
+
 def create_voice(uploaded_audio, steps, resume_id):
+    steps = int(steps)
+    progress = progress_html(total_steps=steps)
     # Resume only an existing job in this exact running container/volume.
     resume_id = (resume_id or "").strip()
     if resume_id:
         if not re.fullmatch(r"[a-f0-9]{12}", resume_id):
-            yield "Invalid recovery job ID (expected 12 hexadecimal characters).", None
+            yield "Invalid recovery job ID (expected 12 hexadecimal characters).", None, progress
             return
         job_dir = JOBS / resume_id
         if not (job_dir / "dataset" / "manifest.json").is_file():
             yield ("No saved pairs found for " + resume_id +
-                   ". Restart/rebuild may have erased temporary storage."), None
+                   ". Restart/rebuild may have erased temporary storage."), None, progress
             return
         # A completed dataset contains the processed reference itself, so
         # the user doesn't have to upload another two-hour original.
         saved_reference = job_dir / "target_reference.wav"
         if not saved_reference.is_file():
-            yield "Recovered job is missing its reference audio; cannot resume safely.", None
+            yield "Recovered job is missing its reference audio; cannot resume safely.", None, progress
             return
         uploaded_audio = str(saved_reference)
     else:
         if not uploaded_audio:
-            yield "Upload an audio recording first, or enter a saved job ID.", None
+            yield "Upload an audio recording first, or enter a saved job ID.", None, progress
             return
         if not os.path.isfile(uploaded_audio):
-            yield "Uploaded file no longer exists. Try uploading again.", None
+            yield "Uploaded file no longer exists. Try uploading again.", None, progress
             return
         job_dir = JOBS / uuid.uuid4().hex[:12]
     # Test CUDA before starting a long job, never launch GPU training on CPU.
     try:
         import torch
         if not torch.cuda.is_available():
-            yield "NO NVIDIA GPU DETECTED. Assign a T4 GPU in Space Settings → Hardware, then restart.", None
+            yield "NO NVIDIA GPU DETECTED. Assign a T4 GPU in Space Settings → Hardware, then restart.", None, progress
             return
     except Exception as exc:
-        yield f"GPU preflight failed: {exc}", None
+        yield f"GPU preflight failed: {exc}", None, progress
         return
     job_dir.mkdir(parents=True, exist_ok=True)
     command = [
@@ -75,7 +102,10 @@ def create_voice(uploaded_audio, steps, resume_id):
     logs = deque(maxlen=90)
     logs.append(f"Job: {job_dir.name}" + (" (RESUMING saved 400 pairs)" if resume_id else ""))
     logs.append("Starting GPU training: 400 accepted pairs, then full LLVC PTH and ONNX.")
-    yield "\n".join(logs), None
+    completed_pairs = 400 if resume_id else 0
+    completed_steps = 0
+    exported = False
+    yield "\n".join(logs), None, progress_html(completed_pairs, 0, steps, "Starting GPU job")
     process = subprocess.Popen(
         command, cwd="/app", env=env,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -87,6 +117,35 @@ def create_voice(uploaded_audio, steps, resume_id):
         if not line:
             continue
         logs.append(line)
+        counter_changed = False
+        pair_match = re.search(r"Teacher conversion:\\s*(\\d+)/400 accepted", line)
+        if pair_match:
+            completed_pairs = min(400, int(pair_match.group(1)))
+            counter_changed = True
+            stage = "Building paired speech (Seed-VC)"
+        elif "[4/5]" in line or "Genuine teacher corpus:" in line:
+            completed_pairs = 400
+            stage = "Training LLVC model"
+            counter_changed = True
+        step_match = re.search(r"LLVC training (\\d+)/(\\d+) steps", line)
+        if step_match:
+            completed_steps = min(steps, int(step_match.group(1)))
+            stage = "Training LLVC model"
+            counter_changed = True
+        if "LLVC training completed" in line and "gradient updates" in line:
+            completed_steps = steps
+            counter_changed = True
+        if "REAL trained full-size ONNX exported:" in line:
+            exported = True
+            completed_steps = steps
+            stage = "ONNX verified; packaging model"
+            counter_changed = True
+        if "COMPLETE — ZIP:" in line:
+            exported = True
+            completed_steps = steps
+            completed_pairs = 400
+            stage = "Model ZIP completed"
+            counter_changed = True
         important = (
             line.startswith("[") or
             line.startswith("Teacher conversion") or
@@ -95,17 +154,48 @@ def create_voice(uploaded_audio, steps, resume_id):
             "Error" in line or "Traceback" in line
         )
         now = time.monotonic()
-        if important and now - last_update > 1:
-            yield "\n".join(logs), None
+        if (counter_changed or important) and now - last_update > 0.8:
+            stage = locals().get("stage", "Working")
+            yield "\n".join(logs), None, progress_html(
+                completed_pairs, completed_steps, steps, stage, exported
+            )
             last_update = now
     return_code = process.wait()
     packages = list(job_dir.glob("*_PTH_ONNX.zip"))
     if return_code == 0 and len(packages) == 1:
         logs.append("SUCCESS — PTH and ONNX are bundled in the single downloadable ZIP.")
-        yield "\n".join(logs), str(packages[0])
+        yield "\n".join(logs), str(packages[0]), progress_html(
+            400, steps, steps, "Complete — ZIP ready for download", True, True
+        )
     else:
-        logs.append(f"FAILED (exit {return_code}). Saved pairs/checkpoints remain at {job_dir}.")
-        yield "\n".join(logs), None
+        logs.append(f"FAILED (exit {return_code}). Saved pairs/checkpoints may remain at {job_dir}.")
+        yield "\n".join(logs), None, progress_html(
+            completed_pairs, completed_steps, steps, "Stopped — see error in logs", exported
+        )
+
+def recover_completed_model(job_id):
+    """CPU-only ZIP recovery from already exported PTH/ONNX; no training."""
+    job_id = (job_id or "").strip()
+    if not re.fullmatch(r"[a-f0-9]{12}", job_id):
+        return "Enter the 12-character ID from the failed job log.", None
+    directory = JOBS / job_id
+    report = directory / "llvc-trained" / "model_report.json"
+    if not report.is_file():
+        return ("No saved export report in this job. "
+                "The Space may have lost ephemeral files when paused/rebuilt."), None
+    command = [
+        sys.executable,
+        "/app/irl-voice/voice-training/one_click_pipeline.py",
+        "--run-dir", str(directory), "--package-only",
+    ]
+    result = subprocess.run(
+        command, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        timeout=240, env={**os.environ, "PYTHONUNBUFFERED": "1"},
+    )
+    files = list(directory.glob("*_PTH_ONNX.zip"))
+    if result.returncode == 0 and len(files) == 1:
+        return "Recovered existing PTH and ONNX; no GPU training used.", str(files[0])
+    return "ZIP recovery failed:\\n" + result.stdout[-5000:], None
 
 
 def backup_pairs(job_id):
@@ -148,7 +238,7 @@ with gr.Blocks(title="Custom Neural Voice Trainer") as demo:
         with gr.Column():
             updates = gr.Dropdown(
                 label="Training updates", choices=[500, 1000, 2000, 5000, 10000],
-                value=5000, info="5,000 repeats training on the 400 pairs; it does not generate 5,000 pairs."
+                value=500, info="500 = quick baseline; 5,000 = longer fine-tuning. These are updates on the same 400 pairs."
             )
             start = gr.Button("Train voice and build ZIP", variant="primary")
     with gr.Accordion("Recover an interrupted job (optional)", open=False):
@@ -162,11 +252,17 @@ with gr.Blocks(title="Custom Neural Voice Trainer") as demo:
         backup_file = gr.File(label="Saved pairs ZIP", interactive=False)
         backup.click(fn=backup_pairs, inputs=resume_id,
                      outputs=[backup_message, backup_file])
-    status = gr.Textbox(label="Live training and export progress", lines=16, max_lines=28, interactive=False)
+        salvage = gr.Button("Recover completed PTH + ONNX as ZIP (no GPU training)")
+        salvage_message = gr.Textbox(label="ZIP recovery status", interactive=False)
+        salvage_file = gr.File(label="Recovered model ZIP", interactive=False)
+        salvage.click(fn=recover_completed_model, inputs=resume_id,
+                      outputs=[salvage_message, salvage_file])
+    progress_panel = gr.HTML(value=progress_html(), label="Live progress")
+    status = gr.Textbox(label="Detailed training log", lines=16, max_lines=28, interactive=False)
     bundle = gr.File(label="Download PTH + ONNX (one ZIP)", interactive=False)
     start.click(
-        fn=create_voice, inputs=[audio, updates, resume_id], outputs=[status, bundle],
-        concurrency_limit=1,
+        fn=create_voice, inputs=[audio, updates, resume_id],
+        outputs=[status, bundle, progress_panel], concurrency_limit=1,
     )
     gr.Markdown(
         "Checkpoints and intermediate data stay on this Space's disk. "
