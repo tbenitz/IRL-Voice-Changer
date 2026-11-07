@@ -67,45 +67,51 @@ async function infer(chunk){
   const v=Number(tail[i]);if(!Number.isFinite(v))throw Error("Model produced invalid audio");
   pcm[i]=Math.min(1,Math.max(-1,v));
  }
- // Prevent locally trained near-identity models from impersonating genuine
- // speaker conversion. This is a wave-difference check, NOT voice similarity.
- let difference=0,energy=0,dot=0,outEnergy=0;
- if(requireVoiceChange){
-  for(let i=0;i<pcm.length;i+=4){
-   const dry=chunk[i],wet=pcm[i],d=wet-dry;
-   difference+=d*d;energy+=dry*dry;outEnergy+=wet*wet;dot+=dry*wet;
-  }
-  const rms=Math.sqrt(energy/Math.ceil(pcm.length/4));
-  const differenceRatio=Math.sqrt(difference/Math.max(energy,1e-12));
-  const corr=dot/Math.sqrt(Math.max(energy*outEnergy,1e-12));
-  const nearIdentity=rms>0.012 && differenceRatio<0.12 && corr>0.98;
-  if(nearIdentity){
-   unchangedSpeechChunks++;
-   if(unchangedSpeechChunks>=3)
-    throw Error("The selected ONNX model produces almost unchanged microphone audio "+
-     "(relative waveform change "+(differenceRatio*100).toFixed(1)+"%). "+
-     "This experimental student did NOT learn a convincing voice conversion. "+
-     "Audio was muted. Use one of the real trained 13.7 MB streaming voices "+
-     "or train with genuinely aligned conversion pairs.");
-   // Never play these near-dry audio blocks as a success.
-   send("dropped",{reason:"Unchanged model output muted; verifying voice-change strength"});
-   // Keep history advancing even when near-identity audio is rejected.
-   if(chunk.length>=history.length)history.set(chunk.subarray(chunk.length-history.length));
-   else{
-    history.copyWithin(0,chunk.length);
-    history.set(chunk,history.length-chunk.length);
-   }
-   return;
-  }
-  if(rms>0.012)unchangedSpeechChunks=0;
+ // Measure the ACTUAL model output relative to the current microphone
+ // input, not merely whether an ONNX session returned "success".
+ // Waveform difference is not a speaker-identity test.
+ let deltaSum=0,inputSum=0,outputSum=0,dot=0,dc=0,nMeasured=0;
+ for(let i=0;i<pcm.length;i+=4){
+  const dry=chunk[i],wet=pcm[i],d=wet-dry;
+  deltaSum+=d*d;inputSum+=dry*dry;outputSum+=wet*wet;dot+=dry*wet;
+  dc+=wet;nMeasured++;
  }
+ const inputRms=Math.sqrt(inputSum/Math.max(1,nMeasured));
+ const outputRms=Math.sqrt(outputSum/Math.max(1,nMeasured));
+ const changeRatio=Math.sqrt(deltaSum/Math.max(inputSum,1e-12));
+ const correlation=dot/Math.sqrt(Math.max(inputSum*outputSum,1e-12));
+ const speech=inputRms>.012;
+ // Gain-only/phase-identical changes are not a new voice. Require several
+ // consecutive voiced blocks before rejecting to avoid startup transients.
+ const nearIdentity=speech&&correlation>.995;
+ const silentOutput=speech&&outputRms<.003;
+ if(requireVoiceChange&&speech&&(nearIdentity||silentOutput)){
+  unchangedSpeechChunks++;
+  const reason=silentOutput?"Neural ONNX model produced almost silence for audible microphone input":
+   "Neural ONNX model returned essentially the same microphone waveform";
+  if(unchangedSpeechChunks>=3)throw Error(reason+
+   " (waveform correlation "+correlation.toFixed(4)+
+   ", normalized change "+changeRatio.toFixed(3)+
+   ", input RMS "+inputRms.toFixed(3)+
+   ", output RMS "+outputRms.toFixed(3)+
+   "). No unmodified audio will be played. "+
+   "The 65 KB Pocket student cannot currently be considered a working speaker clone; "+
+   "try a pretrained 13.7 MB voice model to test the engine.");
+  send("dropped",{reason:reason+"; muting this block pending verification",
+   inputRms,outputRms,changeRatio,correlation});
+  if(chunk.length>=history.length)history.set(chunk.subarray(chunk.length-history.length));
+  else{history.copyWithin(0,chunk.length);history.set(chunk,history.length-chunk.length)}
+  return;
+ }
+ if(speech)unchangedSpeechChunks=0;
  if(chunk.length>=history.length)history.set(chunk.subarray(chunk.length-history.length));
  else {
   history.copyWithin(0,chunk.length);
   history.set(chunk,history.length-chunk.length);
  }
  const inferenceMs=performance.now()-start;
- send("audio",{pcm,inferenceMs,chunkMs:chunk.length/16,rtf:inferenceMs/(chunk.length/16)},[pcm.buffer]);
+ send("audio",{pcm,inferenceMs,chunkMs:chunk.length/16,rtf:inferenceMs/(chunk.length/16),
+  inputRms,outputRms,changeRatio,correlation},[pcm.buffer]);
 }
 self.onmessage=async event=>{
  const m=event.data||{};
@@ -118,7 +124,7 @@ self.onmessage=async event=>{
   try{
    initialized=false;session?.release?.().catch(()=>{});session=null;
    resetHistory(Number(m.historySamples)||4096);
-   requireVoiceChange=m.requireVoiceChange===true;
+   requireVoiceChange=m.requireVoiceChange!==false;
    unchangedSpeechChunks=0;
    await loadModel(m.model);
   }catch(e){send("error",{text:"Tiny neural model init: "+err(e)})}
