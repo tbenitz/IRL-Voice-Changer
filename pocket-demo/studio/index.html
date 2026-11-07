@@ -76,7 +76,7 @@
   Pocket TTS generates speech from text; it is <strong>not</strong> a real-time voice changer.
   <a href="../../live-vc/" style="color:#6df7dc;text-decoration:underline;margin-left:9px">Open the actual live microphone voice changer</a>
 </div>
-<header class="studio-nav"><a class="studio-logo" href="#hero"><span class="logo-mark">◉</span> POCKET<span>STUDIO</span></a><nav aria-label="Navigation"><a href="../../online-test/">All voice models</a><a href="#app">Voice creator</a><a href="#studio-experience">Replay and exports</a><a href="#download-suite">Windows software</a></nav></header>
+<header class="studio-nav"><a class="studio-logo" href="#hero"><span class="logo-mark">◉</span> POCKET<span>STUDIO</span></a><nav aria-label="Navigation"><a href="../../online-test/">All voice models</a><a href="#app">Voice creator</a><a href="#pocket-trainer">Custom voice trainer</a><a href="#studio-experience">Replay and exports</a><a href="#download-suite">Windows software</a></nav></header>
 
 <div class="grain" aria-hidden="true"></div>
 
@@ -87,6 +87,7 @@
   <h1 class="hero__title">Create a voice.<br><em>Take it anywhere.</em></h1>
   <p class="hero__subtitle">Try real Pocket TTS on your Chromebook before installing anything. Choose a voice, hear synthesized speech, replay it and export WAV or MP3.</p>
   <div class="hero__actions">
+    <a href="#pocket-trainer" class="btn-primary">Train a custom streaming voice</a>
     <a href="#app" class="btn-primary">
       Open voice studio
       <svg viewBox="0 0 16 8" width="16" height="8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M0 4h14M10 0l4 4-4 4"/></svg>
@@ -290,6 +291,10 @@
 <script type="module" src="app.js?v=20261106-cb1"></script>
 <script src="./vendor/lame.min.js"></script>
 <script type="module" src="./studio-addon.js?v=20261106-cb1"></script>
+<script defer src="./trainer-data.js?v=20261106-voice-train-v1"></script>
+<script defer src="./trainer-onnx.js?v=20261106-voice-train-v1"></script>
+<script defer src="./trainer-webgpu.js?v=20261106-voice-train-v1"></script>
+<script type="module" src="./trainer-addon.js?v=20261106-voice-train-v1"></script>
 <script src="./pocket-mic-addon.js?v=20261106-cb1" defer></script>
 </body>
 </html>
