@@ -7,7 +7,6 @@
   const app = window.__pocketApp;
   if (!app) { console.error("Pocket TTS app not initialized"); return; }
   const PCM_RATE = 24000;
-  const encode = new TextEncoder();
   const container = document.querySelector("#app .container");
   if (!container) throw new Error("Upstream Pocket Voice layout changed.");
   const result = await fetch("./studio-ui.html");
@@ -18,9 +17,7 @@
   const generated = el("clone-player");
   const btnWav = el("save-wav");
   const btnMp3 = el("save-mp3");
-  const btnExe = el("download-personal");
-  const consent = el("single-consent");
-  const status = el("personal-status");
+  const status = el("audio-status");
   let voiceSerial = 0;
   let previewSerial = -1;
   let previewVoice = null;
@@ -37,17 +34,9 @@
     return app.activeVoice === "custom" && app.el.voiceSelect.value === "custom" &&
            !!app.lastClonedPCM;
   }
-  function canExportExe() {
-    return !busy && !app.isGenerating && !app.isVoiceEncoding && consent.checked &&
-      customSelected() && app.lastClonedPCM.length >= PCM_RATE * 3 &&
-      previewSerial === voiceSerial && previewVoice === "custom" &&
-      !!audioPCM && audioPCM.length > PCM_RATE / 3;
-  }
   function update() {
-    btnExe.disabled = !canExportExe();
     btnWav.disabled = !audioPCM;
     btnMp3.disabled = !audioPCM || busy;
-    btnExe.setAttribute("aria-busy", busy ? "true" : "false");
   }
   function mergeChunks(chunks) {
     const length = chunks.reduce((sum, c) => sum + c.length, 0);
@@ -116,9 +105,7 @@
       previewSerial = customSelected() ? voiceSerial : -1;
       el("generated-note").textContent = (merged.length / PCM_RATE).toFixed(1) +
         "s saved. Replay using the controls. Export without another voice generation.";
-      message(customSelected()
-        ? "Preview finished. Tick the permission box to create your single-voice executable."
-        : "Audio saved. Generate using your custom uploaded voice to unlock the personal EXE.");
+      message("Audio ready for optional WAV or MP3 export. The training lab generates its own recordings; no manual preview is needed.");
     }
     update();
     return output;
@@ -139,7 +126,6 @@
     return response;
   };
   app.el.voiceSelect.addEventListener("change", () => requestAnimationFrame(showReference));
-  consent.addEventListener("change", update);
 
   function download(blob, filename) {
     const url = URL.createObjectURL(blob);
@@ -184,111 +170,6 @@
     } finally { busy = false; update(); }
   });
 
-  function base64(arrayBuffer) {
-    const bytes = new Uint8Array(arrayBuffer), chunks = [];
-    for (let i = 0; i < bytes.length; i += 32768) {
-      chunks.push(String.fromCharCode(...bytes.subarray(i, i + 32768)));
-    }
-    return btoa(chunks.join(""));
-  }
-  function ascii(bytes, start, size) {
-    return new TextDecoder("ascii").decode(bytes.subarray(start, start + size));
-  }
-  // Pages can temporarily serve an older build after a release. The second
-  // source is the repository's committed, already-tested 6 MB Windows starter.
-  // Both paths receive the same SHA-256 verification before any executable
-  // is built. The voice recording is only appended locally in this browser.
-  const STARTER_PATHS = [
-    {meta: "./download/starter-build.json", exe: "./download/SingleVoice-Starter.exe"},
-    {meta: "https://raw.githubusercontent.com/tbenitz/A-Portable-Voice-Clone-Exe/main/web/download/starter-build.json",
-     exe: "https://raw.githubusercontent.com/tbenitz/A-Portable-Voice-Clone-Exe/main/web/download/SingleVoice-Starter.exe"}
-  ];
-  // A verified copy from the published Windows CI build. Only used if the
-  // metadata endpoints are unavailable; a mismatching binary is still rejected.
-  const VERIFIED_STARTER = {
-    size: 6102016, thin: true, revision: "259d71d38b",
-    architecture: "windows-x64",
-    sha256: "4341e0068e5beb30460bccaf1b69927921ed7ff6dd2905fa0d1788dd518073eb"
-  };
-  function validateStarterInfo(info) {
-    return !!info && info.architecture === "windows-x64" &&
-      info.thin === true && Number.isSafeInteger(info.size) &&
-      info.size > 200000 && info.size < 40000000 &&
-      /^[a-f0-9]{64}$/i.test(info.sha256);
-  }
-  async function loadTemplate() {
-    message("Preparing the verified single-voice Windows starter…");
-    const errors = [];
-    for (const source of STARTER_PATHS) {
-      try {
-        let metadata;
-        try {
-          const metaResponse = await fetch(source.meta, {cache: "no-store"});
-          if (!metaResponse.ok) throw new Error("HTTP " + metaResponse.status);
-          metadata = await metaResponse.json();
-        } catch (error) {
-          errors.push("metadata " + source.meta + ": " + error.message);
-          // Known build fallback is safe only if SHA-256 of the binary matches.
-          metadata = VERIFIED_STARTER;
-        }
-        if (!validateStarterInfo(metadata)) throw new Error("Invalid verified Windows starter manifest");
-        const result = await fetch(source.exe, {cache: "no-store"});
-        if (!result.ok) throw new Error("HTTP " + result.status);
-        const binary = await result.arrayBuffer();
-        if (binary.byteLength !== metadata.size) {
-          throw new Error("Starter size mismatch (" + binary.byteLength + " versus " + metadata.size + ")");
-        }
-        const bytes = new Uint8Array(binary);
-        const view = new DataView(binary);
-        if (bytes.length < 128) throw new Error("Windows launcher is incomplete");
-        const peAt = view.getUint32(0x3c, true);
-        if (ascii(bytes, 0, 2) !== "MZ" || peAt < 64 || peAt + 6 > bytes.length ||
-            ascii(bytes, peAt, 4) !== "PE\u0000\u0000" ||
-            view.getUint16(peAt + 4, true) !== 0x8664) {
-          throw new Error("Windows x64 executable header is invalid");
-        }
-        const digest = await crypto.subtle.digest("SHA-256", binary);
-        const actual = [...new Uint8Array(digest)]
-          .map(value => value.toString(16).padStart(2, "0")).join("");
-        if (actual !== metadata.sha256.toLowerCase()) {
-          throw new Error("Starter checksum mismatch — refusing an unverified executable");
-        }
-        return {binary, metadata};
-      } catch (error) {
-        errors.push(source.exe + ": " + (error.message || error));
-      }
-    }
-    throw new Error("The Windows starter could not be retrieved from the site or GitHub. " +
-      "Please reload the page and retry. (" + errors.join("; ").slice(0, 500) + ")");
-  }
-
-  btnExe.addEventListener("click", async () => {
-    if (!canExportExe()) { message("Generate a sample with your cloned voice, then confirm consent.", true); return; }
-    busy = true; update();
-    try {
-      const allowed = new Set(["english_2026-04","english","german","italian","spanish","portuguese"]);
-      const lang = app.el.langSelect.value;
-      if (!allowed.has(lang)) throw new Error("Unsupported language.");
-      const pcm = app.lastClonedPCM;
-      if (pcm.length > PCM_RATE * 20) throw new Error("Reference too long for the compact model conditioning sample.");
-      const {binary, metadata} = await loadTemplate();
-      message("EXE checksum verified. Embedding your cloned voice entirely in this browser...");
-      const referenceWav = app.float32ToWav(pcm, PCM_RATE);
-      const payload = encode.encode(JSON.stringify({
-        version: 1, engine: "pocket", lang, voice_name: (el("personal-name").value || "My Cloned Voice").trim().slice(0,72),
-        voice_wav_b64: base64(referenceWav)
-      }));
-      if (payload.length > 8000000) throw new Error("Embedded voice is larger than 8 MB.");
-      const footer = new Uint8Array(16);
-      footer.set(encode.encode("CVRCFG01"));
-      new DataView(footer.buffer).setBigUint64(8, BigInt(payload.length), true);
-      download(new Blob([binary, payload, footer], {type:"application/octet-stream"}),
-               "PocketVoice-Personal-" + metadata.revision + ".exe");
-      message("Your personal voice EXE is ready. First run on Windows downloads and verifies its ~205 MB runtime and Pocket model once; later launches reuse the local cache.");
-    } catch (e) {
-      message("EXE creation failed: " + (e.message || e), true);
-    } finally { busy = false; update(); }
-  });
   window.addEventListener("beforeunload", () => {
     if (wavUrl) URL.revokeObjectURL(wavUrl);
     if (refUrl) URL.revokeObjectURL(refUrl);
