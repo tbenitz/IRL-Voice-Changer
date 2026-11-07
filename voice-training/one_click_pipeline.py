@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""One-upload GPU voice pipeline: 2s–2h audio -> 400 aligned pairs -> LLVC PTH -> ONNX -> ZIP.
+"""One-upload GPU voice pipeline: 2s–2h audio -> 400 aligned pairs -> LLVC PTH -> ONNX (optional ZIP).
 
 Run with the Python environment used for Seed-VC/LLVC (Colab voice-venv or
 a GPU Hugging Face Docker Space). New uploads get separate --run-dir paths.
-The output ZIP is created only if trained PTH + validated ONNX both exist.
+Hugging Face Space provides both original files separately via --skip-zip.
 """
 import argparse
 import json
@@ -213,6 +213,8 @@ def package_model(output, manifest, reference_info, run_dir, model_name, steps):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--audio", type=Path, help="Input audio (not needed for --package-only)")
+    parser.add_argument("--skip-zip", action="store_true",
+                        help="Save trained PTH and ONNX as separate downloads; NEVER require ZIP packaging")
     parser.add_argument("--package-only", action="store_true",
                         help="Recover a completed trained PTH+ONNX as one ZIP, without CUDA or audio upload")
     parser.add_argument("--run-dir", type=Path, required=True)
@@ -286,7 +288,10 @@ def main():
             manifest_data = json.loads(manifest_file.read_text())
             info_file = work / "reference_selection.json"
             info = json.loads(info_file.read_text()) if info_file.is_file() else {}
-            package_model(output, manifest_data, info, work, name, args.steps)
+            if args.skip_zip:
+                say("MODEL_FILES_READY: validated PTH and ONNX are already saved separately.")
+            else:
+                package_model(output, manifest_data, info, work, name, args.steps)
             return
 
     import torch
@@ -340,7 +345,23 @@ def main():
         run(sys.executable, repo / "voice-training" / "train_full_llvc.py",
             "--llvc", llvc, "--dataset", dataset, "--output", output,
             "--steps", args.steps, "--batch", args.batch, "--name", name)
-    package_model(output, manifest, info, work, name, args.steps)
+    if args.skip_zip:
+        # Used by Hugging Face Space: uploaded PTH and ONNX must never be
+        # contingent on an unrelated ZIP/metadata packaging step.
+        saved = output / "checkpoints" / f"G_{args.steps}.pth"
+        onnx_file = output / f"{name}.onnx"
+        if not saved.is_file() or saved.stat().st_size < 2_000_000:
+            raise RuntimeError(f"Final PTH was not saved correctly: {saved}")
+        if not onnx_file.is_file() or onnx_file.stat().st_size < 2_000_000:
+            raise RuntimeError(f"Final ONNX was not saved correctly: {onnx_file}")
+        report = json.loads(report_file.read_text())
+        if report.get("file") != onnx_file.name or report.get("steps") != args.steps:
+            raise RuntimeError("ONNX validation report does not match saved model.")
+        say(f"MODEL_FILES_READY: PTH: {saved}")
+        say(f"MODEL_FILES_READY: ONNX: {onnx_file}")
+        say("DONE: PTH and ONNX saved separately. ZIP packaging skipped entirely.")
+    else:
+        package_model(output, manifest, info, work, name, args.steps)
 
 
 if __name__ == "__main__":
