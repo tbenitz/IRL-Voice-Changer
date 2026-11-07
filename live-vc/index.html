@@ -147,7 +147,7 @@ h3{font-size:15px;margin:0 0 9px}
     </div>
     <div class="rvc-info"><strong>Want a voice model to try?</strong> <a href="https://huggingface.co/ampixa/nepali-rvc-voices-v1/tree/main/browser" target="_blank" rel="noopener">Licensed experimental RVC ONNX voice packs</a> are available. Compatibility with this runtime is unverified. RVC models are speaker-specific; importing a reference MP3 alone does not train one. The common models are large and may exceed an 8 GB browser's available memory.</div>
     <div class="actions">
-      <button type="button" class="secondary" id="get-core">Download compatible ContentVec + RMVPE (~370 MB)</button>
+      <button type="button" class="secondary" id="get-core">Preload selected RVC voice + FP16 models (~430 MB)</button>
       <label style="font-size:12px;color:var(--muted)">Pitch <select id="rvc-shift" style="background:#162e43;color:var(--txt);border:1px solid #3a5a6d;border-radius:9px;padding:10px"><option value="0">0 semitones</option><option value="-5">−5 semitones</option><option value="5">+5 semitones</option><option value="-12">−12 semitones</option><option value="12">+12 semitones</option></select></label>
       <button class="primary" type="button" id="rvc-run">Test selected voice (first 3 sec)</button>
       <button class="secondary" type="button" id="rvc-cancel" disabled>Cancel test</button>
