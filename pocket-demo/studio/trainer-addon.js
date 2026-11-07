@@ -36,26 +36,28 @@ panel.id="pocket-trainer";
 panel.innerHTML=[
  '<span class="ey">Pocket TTS • Synthetic voice recordings • On-device research</span>',
  '<h3>Custom Voice Training Lab</h3>',
- '<p><b>Select a target custom voice below</b> from My Voices, or record/upload a new one below. Then click Generate: the trainer itself synthesizes the paired recordings. <b>You do not need to generate a preview, WAV or MP3 first.</b> Output audio is stored automatically.</p>',
+ '<p><b>Select a target custom voice below</b> from My Voices, or record/upload a new one below. Then click Generate: Pocket synthesizes only the target voice silently by default; optional research pairs use two voices. <b>You do not need to generate a preview, WAV or MP3 first.</b> Output audio is stored automatically.</p>',
  '<div class="notice"><b>Important:</b> 30 minutes of Pocket-generated speech is not 30 minutes of real or time-aligned RVC teacher conversions. Local WebGPU training here is a <b>genuine but experimental waveform adapter</b>. Its ONNX export is real, but voice identity and naturalness are unverified and may be poor.</div>',
  '<div class="grid">',
+ '<label>Recording mode<select id="trainer-mode"><option value="target-only" selected>My cloned voice only (recommended)</option><option value="paired-experimental">Experimental two-voice training pairs</option></select></label>',
  '<label>Target synthetic audio length<select id="trainer-goal"><option value="60">1 minute • test</option><option value="300">5 minutes</option><option value="600">10 minutes</option><option value="1800" selected>30 minutes</option></select></label>',
  '<label>Target voice — who should the model sound like?<select id="trainer-target"><option value="current">Current uploaded/recorded Pocket clone</option></select></label>',
-  '<label>Source voice — the input speaker for pairs<select id="trainer-source"><option value="">Load Pocket to choose voices</option></select></label>',
+  '<label id="trainer-source-label" hidden>Source speaker (experimental pairs only)<select id="trainer-source"><option value="">Load Pocket to choose voices</option></select></label>',
  '<label>Local training updates<select id="trainer-steps"><option value="25">25 • smoke test</option><option value="120" selected>120 • quick</option><option value="500">500 • extended</option><option value="1500">1,500 • experimental</option></select></label>',
  '</div>',
- '<span class="count" id="trainer-count">0:00 / 30:00</span> <small id="trainer-pairs">0 saved speech pairs</small>',
+ '<span class="count" id="trainer-count">0:00 / 30:00</span> <small id="trainer-pairs">0 saved recordings</small>',
+ '<p id="trainer-mode-explainer">One cloned voice; silent generation. No source voice or preview required.</p>',
  '<progress id="trainer-progress" max="100" value="0"></progress>',
  '<label class="check"><input type="checkbox" id="trainer-consent"><span>I am using my own voice or a voice I have explicit permission to clone and train.</span></label>',
  '<div class="actions"><button id="trainer-generate" class="primary">Generate 30 minutes with Pocket</button>',
  '<button id="trainer-stop" disabled>Stop; keep saved pairs</button>',
   '<button id="trainer-refresh-voices" type="button">↻ Refresh My Voices</button>',
- '<button id="trainer-export">Download paired WAV dataset ZIP</button>',
+ '<button id="trainer-export">Download recorded WAVs ZIP</button>',
  '<button id="trainer-reset">Start a new voice project</button></div>',
- '<div id="trainer-status" class="status" role="status" aria-live="polite">Choose a saved target voice (or the current recording), load the Pocket model, then generate pairs directly. No MP3 or manual preview is needed.</div>',
+ '<div id="trainer-status" class="status" role="status" aria-live="polite">Choose your saved target voice, load Pocket, and generate target speech silently. No MP3, other voice or manual preview is required.</div>',
  '<div class="sub"><span class="ey">WebGPU neural student • Automatic ONNX</span>',
  '<h3 style="font-size:22px">Train locally and export a model</h3>',
- '<p>For lower memory use on an 8 GB Chromebook, you can refresh this page after generating the dataset and train without reloading the 200 MB Pocket model. Saved pairs remain in browser storage.</p><p>After saving four or more paired sentences, run real WebGPU gradient updates on a small causal Conv1D network. The exported ONNX file has <code>audio_in → audio_out</code> and is checked with ONNX Runtime Web before being saved. This is not yet an LLVC-quality or verified speaker conversion pipeline.</p>',
+ '<p>Experimental waveform training requires four or more optional two-voice pairs. One-voice speech recordings do NOT train the live converter. Independent Pocket source/target renders are not aligned teacher outputs, so successful voice identity is unverified. To free memory on an 8 GB Chromebook, refresh after collection before training.</p>',
  '<label class="check"><input type="checkbox" id="trainer-cpu" checked><span>Permit slower CPU training if WebGPU is unavailable or unsupported.</span></label>',
  '<div class="actions"><button id="trainer-train" class="primary">Train locally and auto-export ONNX</button>',
  '<button id="trainer-stop-training" disabled>Stop training after current step</button>',
@@ -72,7 +74,7 @@ const trainNotice=(msg,bad=false)=>{
  const el=$("trainer-training-status");el.textContent=String(msg);el.classList.toggle("bad",bad)
 };
 const S={running:false,training:false,cancel:false,cancelTraining:false,
- cursor:0,seconds:0,pairs:0,hash:null,goal:1800};
+ cursor:0,seconds:0,pairs:0,paired:0,hash:null,goal:1800};
 let pending=null;
 const oldHandle=app.handleWorkerMessage.bind(app);
 app.handleWorkerMessage=msg=>{
@@ -112,17 +114,22 @@ function rejectPending(){
 function clock(v){const n=Math.round(v);return Math.floor(n/60)+":"+String(n%60).padStart(2,"0")}
 function render(){
  const busy=S.running||S.training;
- $("trainer-generate").disabled=busy;$("trainer-train").disabled=busy;
+ $("trainer-generate").disabled=busy;$("trainer-train").disabled=busy||S.paired<4;
  $("trainer-stop").disabled=!S.running;
  $("trainer-stop-training").disabled=!S.training;
  $("trainer-export").disabled=busy||!S.pairs;
  $("trainer-reset").disabled=busy;
- $("trainer-goal").disabled=busy;$("trainer-source").disabled=busy;
+ $("trainer-goal").disabled=busy;$("trainer-mode").disabled=busy;$("trainer-source").disabled=busy;
  $("trainer-target").disabled=busy;$("trainer-refresh-voices").disabled=busy;
  $("trainer-count").textContent=clock(S.seconds)+" / "+clock(S.goal);
- $("trainer-pairs").textContent=S.pairs+" saved pairs";
+ $("trainer-pairs").textContent=S.pairs+" target recordings, "+S.paired+" experimental pairs";
  $("trainer-progress").value=Math.min(100,100*S.seconds/Math.max(1,S.goal));
- $("trainer-generate").textContent="Generate / resume "+Math.round(S.goal/60)+" min Pocket recordings";
+ const paired=$("trainer-mode").value==="paired-experimental";
+ $("trainer-source-label").hidden=!paired;
+ $("trainer-mode-explainer").textContent=paired
+  ?"Experimental mode generates two voices silently using the same text. The recordings are NOT phoneme aligned and do not guarantee conversion training."
+  :"Only your selected target voice is generated and saved silently. No second voice or preview is required.";
+ $("trainer-generate").textContent="Generate / resume "+Math.round(S.goal/60)+(paired?" min experimental pairs":" min cloned voice");
 }
 const subjects=[
 "The quickest way to learn something is to practice slowly and carefully.",
@@ -295,7 +302,8 @@ async function synth(text,voice){
 }
 async function refresh(){
  const pairs=await D.listPairs(),st=await D.getMeta("progress");
- S.pairs=pairs.length;S.seconds=pairs.reduce((s,p)=>s+(p.seconds||0),0);
+ S.pairs=pairs.length;S.paired=pairs.filter(p=>p.source&&p.target).length;
+ S.seconds=pairs.reduce((s,p)=>s+(p.seconds||0),0);
  S.cursor=st?.value?.cursor??pairs.length;S.hash=st?.value?.hash??null;
  S.goal=Number($("trainer-goal").value);
  const saved=await D.getMeta("student-onnx");
@@ -308,6 +316,7 @@ async function refresh(){
  render();
 }
 $("trainer-goal").addEventListener("change",()=>{S.goal=Number($("trainer-goal").value);render()});
+$("trainer-mode").addEventListener("change",render);
 function refreshVoices(){
  const list=app.builtinVoices||[];
  const source=$("trainer-source"),target=$("trainer-target");
