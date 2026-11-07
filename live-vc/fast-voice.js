@@ -323,7 +323,7 @@ function play(d){
  app.nextPlayTime=scheduled+buf.duration;
  meters("output-meter",pcm);
  $("lag").textContent=Math.round(actualDelay+(scheduled-ctx.currentTime)*1000);
- info("Unverified model PCM scheduled: "+Math.round(elapsed)+" ms inference for "+
+ info("Actual ONNX PCM"+(d.postPitchSemitones?" with "+(d.postPitchSemitones>0?"+":"")+d.postPitchSemitones+" st post-neural pitch DSP":" (pure model)")+" scheduled: "+Math.round(elapsed)+" ms inference for "+
   Math.round(app.chunkFrames/16)+" ms captured speech. Waveform correlation "+
   (Number.isFinite(correlation)?correlation.toFixed(3):"unknown")+
   "; RTF "+rtf.toFixed(2)+". A numerical waveform difference is NOT speaker-conversion proof. Listen to the A/B audio.");
@@ -419,7 +419,7 @@ async function start(){
   worker.onmessage=e=>eventFromWorker(e,token);
   worker.onerror=e=>{if(token===app.token)void stop("Neural worker crashed: "+(e.message||"unknown"))};
   worker.postMessage({type:"init",model:weights,historySamples:app.historySamples,
-    requireVoiceChange:true},[weights]);
+    pitchSemitones:Number($("pitch-finish").value),requireVoiceChange:true},[weights]);
  }catch(e){
   if(token===app.token)await stop("Could not initialize the real neural model: "+(e?.message||e));
  }
@@ -435,8 +435,24 @@ function describeVoiceSelection(){
  $("voice-mode-detail").textContent=details;
  $("download-status").textContent=details;
 }
-$("voice").addEventListener("change",describeVoiceSelection);
+$("voice").addEventListener("change",()=>{
+ $("pitch-finish").value=["saved","custom"].includes($("voice").value)?"0":"6";
+ updatePitchLabel();
+ describeVoiceSelection();
+});
 describeVoiceSelection();
+function updatePitchLabel(){
+ const value=Number($("pitch-finish").value);
+ $("pitch-finish-label").textContent=(value>0?"+":"")+value+" semitones";
+}
+$("pitch-finish").addEventListener("input",()=>{
+ updatePitchLabel();
+ if(app.active&&app.worker){
+  app.worker.postMessage({type:"config",pitchSemitones:Number($("pitch-finish").value)});
+  info("Optional post-ONNX pitch DSP changed. Shifter needs about 150 ms to refill. Mic still cannot bypass neural inference.");
+ }
+});
+updatePitchLabel();
 $("volume").addEventListener("input",()=>{
  $("volume-value").textContent=$("volume").value+"%";
  if(app.gain&&app.ctx)app.gain.gain.setTargetAtTime(Number($("volume").value)/100,app.ctx.currentTime,.015);
