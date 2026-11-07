@@ -55,9 +55,10 @@ progress{width:100%;height:13px;accent-color:var(--mint)}
       <option value="hfg">Female — streaming LLVC student (13.7 MB)</option>
       <option value="old_hq">Female — alternate HQ checkpoint (13.7 MB)</option>
       <option value="old">Female — original checkpoint (13.7 MB)</option>
+      <option value="saved">My saved trained ONNX (from Pocket Studio)</option>
       <option value="custom">Upload my own compatible causal 16kHz ONNX</option>
     </select>
-    <small>Real trained speaker voices, not pitch presets. Custom models must expose <code>audio_in → audio_out</code>; ordinary RVC .onnx voice files are NOT compatible here.</small>
+    <small>Built-in models are real trained speaker voices. Saved experimental Pocket-adapter model similarity is unverified. Custom models must expose <code>audio_in → audio_out</code>; ordinary RVC .onnx voice files are NOT compatible here.</small>
   </label>
   <label class="field" id="custom-field" hidden>Compatible custom ONNX model<input id="model-file" type="file" accept=".onnx"></label>
   <div class="formgrid">
