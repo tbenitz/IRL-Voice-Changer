@@ -2,10 +2,12 @@
 import os
 from collections import deque
 from pathlib import Path
+import re
 import subprocess
 import sys
 import time
 import uuid
+import zipfile
 
 import gradio as gr
 
@@ -17,13 +19,33 @@ JOBS = WORKSPACE / "voice-jobs"
 CACHE = WORKSPACE / "voice-cache"
 
 
-def create_voice(uploaded_audio, steps):
-    if not uploaded_audio:
-        yield "Upload an audio recording first.", None
-        return
-    if not os.path.isfile(uploaded_audio):
-        yield "Uploaded file no longer exists. Try uploading again.", None
-        return
+def create_voice(uploaded_audio, steps, resume_id):
+    # Resume only an existing job in this exact running container/volume.
+    resume_id = (resume_id or "").strip()
+    if resume_id:
+        if not re.fullmatch(r"[a-f0-9]{12}", resume_id):
+            yield "Invalid recovery job ID (expected 12 hexadecimal characters).", None
+            return
+        job_dir = JOBS / resume_id
+        if not (job_dir / "dataset" / "manifest.json").is_file():
+            yield ("No saved pairs found for " + resume_id +
+                   ". Restart/rebuild may have erased temporary storage."), None
+            return
+        # A completed dataset contains the processed reference itself, so
+        # the user doesn't have to upload another two-hour original.
+        saved_reference = job_dir / "target_reference.wav"
+        if not saved_reference.is_file():
+            yield "Recovered job is missing its reference audio; cannot resume safely.", None
+            return
+        uploaded_audio = str(saved_reference)
+    else:
+        if not uploaded_audio:
+            yield "Upload an audio recording first, or enter a saved job ID.", None
+            return
+        if not os.path.isfile(uploaded_audio):
+            yield "Uploaded file no longer exists. Try uploading again.", None
+            return
+        job_dir = JOBS / uuid.uuid4().hex[:12]
     # Test CUDA before starting a long job, never launch GPU training on CPU.
     try:
         import torch
@@ -33,7 +55,6 @@ def create_voice(uploaded_audio, steps):
     except Exception as exc:
         yield f"GPU preflight failed: {exc}", None
         return
-    job_dir = JOBS / uuid.uuid4().hex[:12]
     job_dir.mkdir(parents=True, exist_ok=True)
     command = [
         sys.executable,
@@ -52,6 +73,7 @@ def create_voice(uploaded_audio, steps):
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
     logs = deque(maxlen=90)
+    logs.append(f"Job: {job_dir.name}" + (" (RESUMING saved 400 pairs)" if resume_id else ""))
     logs.append("Starting GPU training: 400 accepted pairs, then full LLVC PTH and ONNX.")
     yield "\n".join(logs), None
     process = subprocess.Popen(
@@ -86,6 +108,30 @@ def create_voice(uploaded_audio, steps):
         yield "\n".join(logs), None
 
 
+def backup_pairs(job_id):
+    """Download the already generated teacher corpus before a rebuild."""
+    job_id = (job_id or "").strip()
+    if not re.fullmatch(r"[a-f0-9]{12}", job_id):
+        return "Enter the 12-character job ID printed in your training logs.", None
+    folder = JOBS / job_id
+    manifest = folder / "dataset" / "manifest.json"
+    if not manifest.is_file():
+        return "No pairs found for this job; storage may have been reset.", None
+    archive = folder / "teacher_pairs_BACKUP.zip"
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as bundle:
+        for file in sorted((folder / "dataset").rglob("*.wav")):
+            bundle.write(file, arcname=str(file.relative_to(folder)))
+        bundle.write(manifest, arcname="dataset/manifest.json")
+        for name in ("target_reference.wav", "reference_selection.json"):
+            f = folder / name
+            if f.is_file():
+                bundle.write(f, arcname=name)
+    with zipfile.ZipFile(archive) as bundle:
+        if bundle.testzip() is not None:
+            return "Backup file failed integrity check.", None
+    return f"Backup ready for saved job {job_id}.", str(archive)
+
+
 with gr.Blocks(title="Custom Neural Voice Trainer") as demo:
     gr.Markdown(
         "# Custom neural voice trainer\n"
@@ -105,10 +151,21 @@ with gr.Blocks(title="Custom Neural Voice Trainer") as demo:
                 value=5000, info="5,000 repeats training on the 400 pairs; it does not generate 5,000 pairs."
             )
             start = gr.Button("Train voice and build ZIP", variant="primary")
+    with gr.Accordion("Recover an interrupted job (optional)", open=False):
+        resume_id = gr.Textbox(
+            label="Existing job ID",
+            placeholder="e.g. 699d49e13cea",
+            info="Resume on the same live container or mounted storage; don't re-upload or regenerate 400 pairs."
+        )
+        backup = gr.Button("Download saved pairs before rebuilding", variant="secondary")
+        backup_message = gr.Textbox(label="Backup status", interactive=False)
+        backup_file = gr.File(label="Saved pairs ZIP", interactive=False)
+        backup.click(fn=backup_pairs, inputs=resume_id,
+                     outputs=[backup_message, backup_file])
     status = gr.Textbox(label="Live training and export progress", lines=16, max_lines=28, interactive=False)
     bundle = gr.File(label="Download PTH + ONNX (one ZIP)", interactive=False)
     start.click(
-        fn=create_voice, inputs=[audio, updates], outputs=[status, bundle],
+        fn=create_voice, inputs=[audio, updates, resume_id], outputs=[status, bundle],
         concurrency_limit=1,
     )
     gr.Markdown(
