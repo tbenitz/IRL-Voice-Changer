@@ -104,6 +104,12 @@ vm.runInNewContext(source,context);
  assert(!control.includes("src.connect(ctx.destination)"),"Direct microphone playback detected");
  assert(html.includes('<option value="8192" selected>512 ms'),
    "Default live microphone chunk should be 512 ms on slow Chromebook hardware");
+ assert(html.includes('<option value="16000" selected>1000 ms'),
+   "Pretrained voice should default to the native model's 1-second context instead of undersupplying 256ms");
+ assert(control.includes('app.historySamples=Number($("history").value)||16000'),
+   "History fallback should match native streaming 1-second context");
+ assert(html.includes("Speaker identity: NOT VERIFIED"),
+   "Changing waveform samples must never be called confirmed speaker conversion");
  assert(html.includes('value="saved"') && html.includes('value="custom"'),
    "Live UI needs distinct saved auto-load and manual-file ONNX modes");
  assert(control.includes("requireVoiceChange:true"),
