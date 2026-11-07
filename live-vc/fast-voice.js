@@ -6,7 +6,7 @@
 "use strict";
 const $=id=>document.getElementById(id);
 const MODEL_ROOT="https://raw.githubusercontent.com/ultrapg/hevoicechanger/main/models/";
-const FAST_BUILD="20261107-output-audit-v8";
+const FAST_BUILD="20261107-post-neural-pitch-v9";
 const voices={
  hfg:{name:"female_voice_hfg_new.onnx",bytes:13756183},
  old_hq:{name:"female_voice_old_hq.onnx",bytes:13718163},
