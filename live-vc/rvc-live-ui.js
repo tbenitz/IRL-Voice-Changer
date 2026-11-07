@@ -202,7 +202,7 @@
         throw Error("The selected voice must be a trained RVC ONNX checkpoint.");
       badge("LOADING ONNX");
       show("Reading downloaded ONNX models into a persistent browser worker…");
-      app.worker=new Worker("./rvc-stream-worker.js?v=20261106-fp16-v2");
+      app.worker=new Worker("./rvc-stream-worker.js?v=20261106-features-v3");
       app.worker.onmessage=event=>workerEvent(event,token);
       app.worker.onerror=event=>{
         if(token!==app.sessionToken)return;
