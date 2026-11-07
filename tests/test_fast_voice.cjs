@@ -39,7 +39,7 @@ const stopped=new Float32Array(128).fill(1);
 c.process([[input]],[[stopped]]);
 assert(stopped.every(x=>x===0),"Stopping should silence microphone output");
 class Tensor{constructor(type,data,dims){this.type=type;this.data=data;this.dims=dims}}
-let sessionLoads=0,sessionRuns=0;
+let sessionLoads=0,sessionRuns=0,lastInput=null;
 const fakert={
  Tensor,env:{wasm:{}},
  InferenceSession:{async create(bytes,opts){
@@ -53,7 +53,7 @@ const fakert={
     const t=feeds.audio_in;
     assert.equal(t.type,"float32");
     assert.equal(t.dims[1],1);
-    const data=t.data.slice();
+    const data=t.data.slice();lastInput=data;
     return {audio_out:new Tensor("float32",data,[1,1,data.length])};
    },
    async release(){}
@@ -85,6 +85,13 @@ vm.runInNewContext(source,context);
  }
  assert.equal(sessionRuns,3);
  assert.equal(sessionLoads,1,"Neural session must persist across microphone chunks");
+ await self.onmessage({data:{type:"config",historySamples:1024}});
+ assert(outputs.some(x=>x.type==="config-applied"&&x.historySamples===1024),
+   "Adaptive history downgrade must be acknowledged by live worker");
+ await self.onmessage({data:{type:"convert",pcm:new Float32Array(2048).fill(.3)}});
+ assert(lastInput.subarray(0,1024).every(x=>Math.abs(x-.3)<1e-5),
+   "Shortening neural context must preserve the latest captured audio, not reset it to zeros");
+
  // Test the user's exact complaint: an experimental ONNX returning input audio
  // must NEVER feed essentially unmodified speech to the converted output.
  const playedBefore=outputs.filter(x=>x.type==="audio").length;
