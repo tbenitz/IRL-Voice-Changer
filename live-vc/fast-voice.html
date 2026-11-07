@@ -97,7 +97,7 @@ progress{width:100%;height:13px;accent-color:var(--mint)}
   <div class="actions"><button id="start" class="primary">Start real-time AI mic</button><button id="stop" class="secondary" disabled>Stop and mute</button><button id="reload-engine" class="secondary" type="button">Reload latest engine</button></div>
   <progress id="download" max="100" value="0" hidden></progress>
   <p class="fine" id="download-status">Model downloads once on first use and is cached when Chrome storage permits. No microphone audio leaves your device.</p>
-  <p class="fine" id="engine-build">Neural runtime build: 20261107-post-neural-pitch-v9 · verified worker startup</p>
+  <p class="fine" id="engine-build">Neural runtime build: 20261107-neural-audible-v10 · verified worker startup</p>
   <div id="status-text" role="status" aria-live="polite">Ready. The microphone is off, original audio is muted, and no AI model is running.</div>
   <div class="notice">Wear headphones. If the ONNX worker crashes, slows down excessively, or cannot run, converted output is muted. Your unmodified microphone is never automatically sent to speakers.</div>
 </section>
@@ -138,5 +138,5 @@ progress{width:100%;height:13px;accent-color:var(--mint)}
 </div>
 <footer>IRL Voice Changer • Pure client-side AudioWorklet and ONNX Runtime Web WASM • Your audio is not uploaded • <a href="./">Other modes</a></footer>
 </main>
-<script defer src="./fast-voice.js?v=20261107-post-neural-pitch-v9"></script>
+<script defer src="./fast-voice.js?v=20261107-neural-audible-v10"></script>
 </body></html>
