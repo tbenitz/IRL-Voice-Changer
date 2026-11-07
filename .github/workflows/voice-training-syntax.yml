@@ -16,7 +16,7 @@ jobs:
           python-version: "3.11"
       - name: Check Python training programs
         run: |
-          python -m py_compile voice-training/generate_teacher_pairs.py voice-training/train_full_llvc.py
+          python -m py_compile voice-training/generate_teacher_pairs.py voice-training/train_full_llvc.py voice-training/colab_setup.py
       - name: Check notebook structure and execution commands
         run: |
           python - <<'PY'
