@@ -95,7 +95,12 @@ async function contentVec(audio){
  let chosen=null,details=[];
  // Some exports provide several outputs. Prefer an actual 768-D feature
  // tensor rather than accidentally using a 256-D final projection.
- for(const name of cv.outputNames){
+ const orderedOutputNames=[...cv.outputNames].sort((a,b)=>{
+  const rank=name=>name==="unit12"?0:name==="units12"?1:name==="last_hidden_state"?2:
+   /unit12s|units9/i.test(name)?10:5;
+  return rank(a)-rank(b);
+ });
+ for(const name of orderedOutputNames){
   const output=results[name];
   details.push(name+":"+(output?.dims?.join("x")||"none"));
   if(output?.dims?.length!==3)continue;
@@ -253,6 +258,7 @@ function synthesizerFeeds(features,f0){
   nsff0:tensor("float32",shifted,[1,frames]),
   sid:tensor("int64",new BigInt64Array([0n]),[1]),
   ds:tensor("int64",new BigInt64Array([0n]),[1]),
+  noise:tensor("float32",noise,[1,192,frames]),
   rnd:tensor("float32",noise,[1,192,frames])
  };
  const feeds={};
