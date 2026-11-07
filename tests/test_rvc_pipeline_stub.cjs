@@ -64,6 +64,37 @@ const context={
  importScripts(){context.ort=fakeORT}
 };
 vm.runInNewContext(source,context);
+
+const normalize=vm.runInNewContext("contentVecTensorToFeatures",context);
+{
+ // Regression: a 256-frame, 768-channel ContentVec output was incorrectly
+ // identified as 256-channel by the previous if(d1===256) branch.
+ const timeMajor=new Float32Array(256*768);
+ timeMajor[0]=1.5;
+ timeMajor[767]=2.5;
+ timeMajor[768]=3.5;
+ const x=normalize(new Tensor("float32",timeMajor,[1,256,768]),768);
+ assert.equal(x.dim,768);
+ assert.equal(x.frames,256);
+ assert.equal(x.layout,"time-major");
+ assert.equal(x.features[767],2.5);
+ assert.equal(x.features[768],3.5);
+ const channelMajor=new Float32Array(768*256);
+ channelMajor[0]=10;
+ channelMajor[256]=20;
+ channelMajor[1]=30;
+ const y=normalize(new Tensor("float32",channelMajor,[1,768,256]),768);
+ assert.equal(y.dim,768);
+ assert.equal(y.frames,256);
+ assert.equal(y.layout,"channel-major");
+ assert.equal(y.features[0],10);
+ assert.equal(y.features[1],20);
+ assert.equal(y.features[768],30);
+ assert.throws(()=>normalize(new Tensor("float32",new Float32Array(256*91),[1,91,256]),768),
+               /no 768-dimensional feature axis/,"Genuine RVC v1 features must not be disguised as RVC v2");
+ console.log("PASS: 256-frame ContentVec axes resolve as genuine 768-D channels (both layouts); incompatible 256-D rejected.");
+}
+
 const wait=(ms=80)=>new Promise(r=>setTimeout(r,ms));
 (async()=>{
  assert.equal(typeof self.onmessage,"function");
