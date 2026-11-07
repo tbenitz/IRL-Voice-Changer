@@ -212,7 +212,9 @@ def package_model(output, manifest, reference_info, run_dir, model_name, steps):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--audio", type=Path, required=True)
+    parser.add_argument("--audio", type=Path, help="Input audio (not needed for --package-only)")
+    parser.add_argument("--package-only", action="store_true",
+                        help="Recover a completed trained PTH+ONNX as one ZIP, without CUDA or audio upload")
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--repo", type=Path, default=Path("/content/irl-voice"))
     parser.add_argument("--seed-vc", type=Path, default=Path("/content/seed-vc"))
@@ -232,24 +234,67 @@ def main():
         parser.error("--batch must be between 1 and 16")
     if not 4 <= args.teacher_steps <= 50:
         parser.error("--teacher-steps must be between 4 and 50")
-    audio = args.audio.expanduser().resolve()
+    audio = args.audio.expanduser().resolve() if args.audio else None
     work = args.run_dir.expanduser().resolve()
     repo = args.repo.expanduser().resolve()
     seed = args.seed_vc.expanduser().resolve()
     llvc = args.llvc.expanduser().resolve()
     cache = args.cache.expanduser().resolve()
-    if not audio.is_file():
+    output = work / "llvc-trained"
+    manifest_file = work / "dataset" / "manifest.json"
+    report_file = output / "model_report.json"
+
+    # Salvage the trained model immediately after a packaging failure.
+    # Never initialize CUDA, download corpora, train, or export in this mode.
+    if args.package_only:
+        if not manifest_file.is_file():
+            raise RuntimeError(f"No saved teacher pairs: {manifest_file}")
+        if not report_file.is_file():
+            raise RuntimeError(f"No saved model report: {report_file}")
+        report_data = json.loads(report_file.read_text())
+        steps = int(report_data["steps"])
+        model_name = Path(report_data["file"]).stem
+        manifest_data = json.loads(manifest_file.read_text())
+        info_file = work / "reference_selection.json"
+        info = json.loads(info_file.read_text()) if info_file.is_file() else {}
+        say(f"RECOVERY: reusing existing model {model_name}, step {steps}; NO GPU or training.")
+        package_model(output, manifest_data, info, work, model_name, steps)
+        return
+
+    if audio is None or not audio.is_file():
         raise FileNotFoundError(f"Audio not found: {audio}")
     for path, label in ((repo, "training repo"), (seed, "Seed-VC"), (llvc, "LLVC")):
         if not path.is_dir():
             raise FileNotFoundError(f"Missing {label}: {path}")
+
+    # Recover original model name after the reference WAV is reused.
+    model_name = args.name
+    if not model_name and report_file.is_file():
+        try:
+            model_name = Path(json.loads(report_file.read_text())["file"]).stem
+        except (KeyError, ValueError, TypeError):
+            pass
+    if not model_name and output.is_dir():
+        existing_onnx = list(output.glob("*.onnx"))
+        if len(existing_onnx) == 1:
+            model_name = existing_onnx[0].stem
+    name = slug(model_name or audio.stem)
+    if (output / "checkpoints" / f"G_{args.steps}.pth").is_file() and report_file.is_file():
+        report_data = json.loads(report_file.read_text())
+        if report_data.get("steps") == args.steps and report_data.get("file") == name + ".onnx":
+            say("[4/5] Existing PTH and verified ONNX found: skipping GPU training and export.")
+            manifest_data = json.loads(manifest_file.read_text())
+            info_file = work / "reference_selection.json"
+            info = json.loads(info_file.read_text()) if info_file.is_file() else {}
+            package_model(output, manifest_data, info, work, name, args.steps)
+            return
+
     import torch
     if not torch.cuda.is_available():
-        raise RuntimeError("A CUDA GPU is required for teacher conversion and training.")
+        raise RuntimeError("A CUDA GPU is required for new teacher conversion or training.")
     say("GPU: " + torch.cuda.get_device_name(0))
     check_gpu_distributed()
     work.mkdir(parents=True, exist_ok=True)
-    name = slug(args.name or audio.stem)
     reference = work / "target_reference.wav"
     info_path = work / "reference_selection.json"
     if reference.is_file() and info_path.is_file():
@@ -273,14 +318,28 @@ def main():
     accepted = sum(int(manifest.get(k, 0)) for k in ("train", "val", "dev"))
     if accepted != args.pairs:
         raise RuntimeError(f"Expected {args.pairs} accepted pairs, got {accepted}.")
-    output = work / "llvc-trained"
     saved = output / "checkpoints" / f"G_{args.steps}.pth"
+    onnx_file = output / f"{name}.onnx"
     say(f"[4/5] Fine-tuning on {accepted} pairs for {args.steps} weight updates.")
     if saved.is_file():
         say(f"Using completed trained checkpoint: {saved.name}; not retraining.")
-    run(sys.executable, repo / "voice-training" / "train_full_llvc.py",
-        "--llvc", llvc, "--dataset", dataset, "--output", output,
-        "--steps", args.steps, "--batch", args.batch, "--name", name)
+    if saved.is_file() and (output / "config.json").is_file():
+        if not onnx_file.is_file() or not report_file.is_file():
+            # Export only. Do not rerun setup or retrain a completed PTH.
+            say("[4/5] Exporting existing PTH; skipping ALL training updates.")
+            run(sys.executable, repo / "voice-training" / "train_full_llvc.py",
+                "--llvc", llvc, "--dataset", dataset, "--output", output,
+                "--steps", args.steps, "--batch", args.batch, "--name", name,
+                "--export-only")
+        else:
+            existing = json.loads(report_file.read_text())
+            if existing.get("file") != onnx_file.name or existing.get("steps") != args.steps:
+                raise RuntimeError("Existing ONNX and report mismatch; use a fresh job directory.")
+            say("[4/5] Found completed ONNX + report; skipping re-export.")
+    else:
+        run(sys.executable, repo / "voice-training" / "train_full_llvc.py",
+            "--llvc", llvc, "--dataset", dataset, "--output", output,
+            "--steps", args.steps, "--batch", args.batch, "--name", name)
     package_model(output, manifest, info, work, name, args.steps)
 
 
