@@ -118,7 +118,7 @@ def create_voice(uploaded_audio, steps, resume_id):
             continue
         logs.append(line)
         counter_changed = False
-        pair_match = re.search(r"Teacher conversion:\\s*(\\d+)/400 accepted", line)
+        pair_match = re.search(r"Teacher conversion:\s*(\d+)/400 accepted", line)
         if pair_match:
             completed_pairs = min(400, int(pair_match.group(1)))
             counter_changed = True
@@ -127,7 +127,7 @@ def create_voice(uploaded_audio, steps, resume_id):
             completed_pairs = 400
             stage = "Training LLVC model"
             counter_changed = True
-        step_match = re.search(r"LLVC training (\\d+)/(\\d+) steps", line)
+        step_match = re.search(r"LLVC training (\d+)/(\d+) steps", line)
         if step_match:
             completed_steps = min(steps, int(step_match.group(1)))
             stage = "Training LLVC model"
@@ -195,7 +195,7 @@ def recover_completed_model(job_id):
     files = list(directory.glob("*_PTH_ONNX.zip"))
     if result.returncode == 0 and len(files) == 1:
         return "Recovered existing PTH and ONNX; no GPU training used.", str(files[0])
-    return "ZIP recovery failed:\\n" + result.stdout[-5000:], None
+    return "ZIP recovery failed:\n" + result.stdout[-5000:], None
 
 
 def backup_pairs(job_id):
