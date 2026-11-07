@@ -24,7 +24,11 @@ def command(*argv):
 
 
 def source_corpus(source_dir, limit, work):
-    """Use only eligible LibriSpeech recordings, drawing from many speakers."""
+    """Choose diverse candidates without decoding hundreds we may never use.
+
+    A 400-pair run normally uses ~404 source clips. Previously all 800
+    candidates were decoded to WAV before the first teacher conversion.
+    """
     originals = sorted(Path(source_dir).rglob("*.flac"))
     originals += sorted(Path(source_dir).rglob("*.wav"))
     if not originals:
@@ -37,21 +41,25 @@ def source_corpus(source_dir, limit, work):
         speaker = path.parent.parent.name if path.parent.parent != Path(source_dir) else path.parent.name
         if per_speaker.get(speaker, 0) >= 20:
             continue
-        out = Path(work) / f"{len(selected):04d}_original.wav"
-        command("ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-                "-i", path, "-ac", "1", "-ar", "16000",
-                "-t", "9", "-acodec", "pcm_s16le", out)
-        audio, rate = sf.read(out, dtype="float32")
-        if rate != 16000 or len(audio) < 2 * 16000:
-            out.unlink(missing_ok=True)
-            continue
-        selected.append(out)
+        selected.append(path)
         per_speaker[speaker] = per_speaker.get(speaker, 0) + 1
         if len(selected) >= limit:
             break
     if len(selected) < 25:
         raise RuntimeError(f"Only {len(selected)} eligible source clips; need at least 25")
     return selected
+
+
+def decode_source(source, work, index):
+    """Decode just the next source clip; remove temporary WAV after use."""
+    output = Path(work) / f"{index:04d}_original.wav"
+    command("ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+            "-i", source, "-ac", "1", "-ar", "16000",
+            "-t", "9", "-acodec", "pcm_s16le", output)
+    audio, rate = sf.read(output, dtype="float32")
+    if rate != 16000 or len(audio) < 2 * 16000:
+        raise ValueError("LibriSpeech source shorter than 2 seconds")
+    return output
 
 
 def prepare_pair(source, converted, destination, index):
@@ -142,8 +150,10 @@ def main():
         if i in already_accepted:
             continue
         converted = None
+        source_wav = None
         try:
-            args_teacher.source = str(source)
+            source_wav = decode_source(source, work, i)
+            args_teacher.source = str(source_wav)
             for old in temp.glob("*.wav"):
                 old.unlink()
             seed.main(args_teacher)
@@ -156,7 +166,7 @@ def main():
                     "-acodec", "pcm_s16le", converted)
             # Use accepted index for exact train/val/dev allocations.
             accepted_index = len(results["accepted_source_indices"])
-            part = prepare_pair(source, converted, args.output, accepted_index)
+            part = prepare_pair(source_wav, converted, args.output, accepted_index)
             results[part] += 1
             results["accepted_source_indices"].append(i)
             # Persist after each successful pair to recover from session loss.
@@ -168,6 +178,9 @@ def main():
         finally:
             if converted:
                 converted.unlink(missing_ok=True)
+            # Converted dataset contains its own accepted source WAV;
+            # this temporary decode is no longer needed.
+            (work / f"{i:04d}_original.wav").unlink(missing_ok=True)
         results["attempted"] = i + 1
         if (i + 1) % 10 == 0 or len(results["accepted_source_indices"]) == args.pairs:
             print(f"Teacher conversion: {len(results['accepted_source_indices'])}/{args.pairs} accepted; "
