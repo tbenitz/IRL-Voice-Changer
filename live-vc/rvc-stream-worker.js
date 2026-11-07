@@ -6,7 +6,7 @@
  */
 "use strict";
 let ortReady=false, modelReady=false, busy=false;
-let cv=null, pitchModel=null, gen=null, sr=48000, shift=0, tail16=new Float32Array(0);
+let cv=null, pitchModel=null, gen=null, sr=48000, shift=0, tail16=new Float32Array(0), fixedVoiceFrames=0;
 const ORT_BASE="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/";
 function tell(type,extra={}){self.postMessage({type,...extra});}
 function errorText(e){return e?.stack||e?.message||String(e);}
@@ -182,13 +182,23 @@ async function pitchF0(audio){
  return trimmed;
 }
 function synthesizerFeeds(features,f0){
- const frames=Math.max(1,Math.min(features.frames,f0.length));
- const data=features.data.slice(0,frames*features.dim);
+ const validFrames=Math.max(1,Math.min(features.frames,f0.length));
+ // Some published browser RVC voices use a fixed [1,512,768] phone shape.
+ // Pad the model INPUT while retaining the number of real frames for output trim.
+ const detected=gen.inputMetadata?.phone?.dimensions||gen.inputMetadata?.phone?.dims||[];
+ const declaredFrames=Number(detected[1]);
+ const maxFrames=Number.isInteger(declaredFrames)&&declaredFrames>0?declaredFrames:fixedVoiceFrames;
+ const frames=maxFrames>0?maxFrames:validFrames;
+ if(validFrames>frames)throw Error("Audio block exceeds voice model's "+frames+" frame input. Lower the microphone block size.");
+ const data=new Float32Array(frames*features.dim);
+ data.set(features.data.subarray(0,validFrames*features.dim));
+ for(let i=validFrames;i<frames;i++)
+   data.set(data.subarray((validFrames-1)*features.dim,validFrames*features.dim),i*features.dim);
  const shifted=new Float32Array(frames);
  const cents=new BigInt64Array(frames);
  const min=1127*Math.log(1+50/700),max=1127*Math.log(1+1100/700);
  for(let i=0;i<frames;i++){
-  const hz=f0[i]*Math.pow(2,shift/12);
+  const hz=i<validFrames?f0[i]*Math.pow(2,shift/12):0;
   shifted[i]=hz;
   cents[i]=BigInt(hz<=0?1:Math.round(Math.max(1,Math.min(255,(1127*Math.log(1+hz/700)-min)*254/(max-min)+1))));
  }
@@ -201,6 +211,7 @@ function synthesizerFeeds(features,f0){
   pitchf:tensor("float32",shifted,[1,frames]),
   nsff0:tensor("float32",shifted,[1,frames]),
   sid:tensor("int64",new BigInt64Array([0n]),[1]),
+  ds:tensor("int64",new BigInt64Array([0n]),[1]),
   rnd:tensor("float32",noise,[1,192,frames])
  };
  const feeds={};
@@ -208,15 +219,19 @@ function synthesizerFeeds(features,f0){
   if(!all[name])throw Error("Unsupported RVC generator input '"+name+"'; expected RVC v2 ONNX");
   feeds[name]=all[name];
  }
- return feeds;
+ return {feeds,validFrames,frames};
 }
 async function synth(audio){
  const features=await contentVec(audio);
  const f0=await pitchF0(audio);
- const out=await gen.run(synthesizerFeeds(features,f0));
+ const {feeds,validFrames}=synthesizerFeeds(features,f0);
+ const out=await gen.run(feeds);
  const t=out.audio||out[gen.outputNames[0]];
  if(!(t?.data instanceof Float32Array))throw Error("RVC generator did not return Float32 PCM audio");
- const wav=new Float32Array(t.data);
+ // The fixed 512-frame model synthesizes 5.12 seconds even for a one-second mic
+ // block. Discard the padded tail or it will cause enormous playback backlog.
+ const usable=Math.min(t.data.length,Math.max(1,Math.round(validFrames*sr/100)));
+ const wav=new Float32Array(t.data.subarray(0,usable));
  if(!wav.length||wav.length>sr*20)throw Error("Invalid RVC output length");
  for(let i=0;i<wav.length;i++)if(!Number.isFinite(wav[i]))throw Error("RVC produced invalid audio values");
  return wav;
@@ -251,6 +266,7 @@ self.onmessage=async e=>{
   if(busy)return;busy=true;modelReady=false;
   try{
    sr=[32000,40000,48000].includes(Number(d.sampleRate))?Number(d.sampleRate):48000;
+   fixedVoiceFrames=Number.isInteger(d.fixedVoiceFrames)&&d.fixedVoiceFrames>=0?d.fixedVoiceFrames:0;
    await setupORT();
    // One model at a time to avoid simultaneous peak allocation.
    cv=await session(d.contentVec,"ContentVec");
