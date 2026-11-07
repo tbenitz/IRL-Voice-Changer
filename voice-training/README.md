@@ -1,5 +1,15 @@
 # Real custom ONNX voice training
 
+## New: one-upload automatic workflow
+
+**[Open the one-click Google Colab trainer](https://colab.research.google.com/github/tbenitz/IRL-Voice-Changer/blob/main/voice-training/one_click_voice.ipynb)** — select a T4 GPU, then run its single cell. The cell uploads a recording **2 seconds to 2 hours** long, analyzes at most its **first 3 minutes**, chooses the best approximately **30-second voice reference**, builds **exactly 400 accepted teacher pairs**, fine-tunes the existing full pretrained LLVC model, exports ONNX, and automatically downloads **one ZIP with the real trained PTH + ONNX**. Training updates default to **5,000** (explicitly editable near the top), which reuses the 400 pairs rather than generating 5,000 clips.
+
+**[Hugging Face Docker GPU Space template](./hf-space/README.md)** — ready-to-copy source files for a Gradio Space with an upload control, live progress, selectable training updates and one ZIP download. You must deploy the files to a Hugging Face Docker Space and assign paid NVIDIA GPU hardware; they are not automatically published to a Space.
+
+Both use [`one_click_pipeline.py`](./one_click_pipeline.py). Successful validation confirms an ONNX graph and inference, **not speaker resemblance**. The complete new one-click run and Docker build are not GPU-tested end to end; keep/check your checkpoints if a deployment or export fails. Long uploads must transfer fully before the script selects its 3-minute analysis segment. Space storage without an attached persistent bucket can disappear on restart. Use a voice recording you are authorized to process.
+
+---
+
 **This is the production-architecture training path.** It replaces the old custom 65–70 KB Pocket waveform adapter as the primary recommended workflow. The old experiment is retained only so existing recordings are not deleted.
 
 [Open the GPU training notebook in Google Colab](https://colab.research.google.com/github/tbenitz/IRL-Voice-Changer/blob/main/voice-training/train_real_voice.ipynb)
