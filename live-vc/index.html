@@ -281,7 +281,7 @@ window.__IRL_RVC_getModels = () => ({
  contentVec: $("rvc-vec").files?.[0] || window.__IRL_RVC_prepared?.contentVec || RUNTIME.vec,
  rmvpe: $("rvc-pitch").files?.[0] || window.__IRL_RVC_prepared?.rmvpe || RUNTIME.pitch,
  fixedVoiceFrames: $("rvc-model").files?.[0] ? 0 : (window.__IRL_RVC_prepared?.fixedVoiceFrames || 0),
- busy: RUNTIME.busy,
+ busy: RUNTIME.busy || Boolean(window.__IRL_RVC_clipBusy),
 });
 
 const CV_URL="https://huggingface.co/TigreGotico/voiceclonnx-rvc/resolve/main/contentvec_768l12_q8.onnx";
