@@ -47,7 +47,8 @@ def setup(upstream, output, dataset, steps, batch):
     config["aux_fairseq"]["c"] = 0
     config["discriminator"] = "hfg"
     config["fp16_run"] = True
-    config["checkpoint_interval"] = steps
+    # Save intermediate checkpoints so GPU interruptions do not erase the run.
+    config["checkpoint_interval"] = min(500, steps)
     config["log_interval"] = max(100, steps)
     config["max_steps"] = steps
     config["test_dir"] = str(upstream / "test_wavs")
