@@ -97,7 +97,7 @@ async function loadORT(){
  root.ort.env.wasm.wasmPaths="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/";
  root.ort.env.wasm.numThreads=1;root.ort.env.wasm.proxy=false;
 }
-async function validateONNX(blob,model,tf){
+async function validateONNX(blob,model,tf,probeSignal=null){
  await loadORT();
  const session=await root.ort.InferenceSession.create(await blob.arrayBuffer(),{
   executionProviders:["wasm"],graphOptimizationLevel:"basic",
@@ -107,7 +107,8 @@ async function validateONNX(blob,model,tf){
   if(!session.inputNames.includes("audio_in")||!session.outputNames.includes("audio_out"))
    throw Error("Exported ONNX input/output names do not match the streaming voice changer.");
   const n=2048,pcm=new Float32Array(n);
-  for(let i=0;i<n;i++)pcm[i]=.12*Math.sin(i*2*Math.PI*180/16000);
+  if(probeSignal?.length>=n)pcm.set(probeSignal.subarray(0,n));
+  else for(let i=0;i<n;i++)pcm[i]=.12*Math.sin(i*2*Math.PI*180/16000);
   const output=await session.run({audio_in:new root.ort.Tensor("float32",pcm,[1,1,n])});
   const out=output.audio_out?.data;
   if(!out||out.length!==n||!out.every(Number.isFinite))
@@ -117,7 +118,15 @@ async function validateONNX(blob,model,tf){
   let maxError=0;
   for(let i=0;i<n;i++)maxError=Math.max(maxError,Math.abs(out[i]-direct[i]));
   if(maxError>.035)throw Error("ONNX weights differ from the browser-trained weights, max error "+maxError.toFixed(3));
-  return {samples:n,maxError};
+  let inputEnergy=0,outputEnergy=0,deltaEnergy=0,dot=0;
+  for(let i=0;i<n;i++){
+   inputEnergy+=pcm[i]*pcm[i];outputEnergy+=out[i]*out[i];
+   const diff=pcm[i]-out[i];deltaEnergy+=diff*diff;dot+=pcm[i]*out[i];
+  }
+  const normalizedChange=Math.sqrt(deltaEnergy/Math.max(inputEnergy,1e-12));
+  const correlation=dot/Math.sqrt(Math.max(inputEnergy*outputEnergy,1e-12));
+  const nearIdentity=normalizedChange<0.12&&correlation>0.98;
+  return {samples:n,maxError,normalizedChange,correlation,nearIdentity};
  }finally{await session.release()}
 }
 async function runTraining({steps=240,allowCPU=true,onProgress=()=>{},onEpoch=()=>{},cancelled=()=>false}={}){
@@ -188,13 +197,18 @@ async function runTraining({steps=240,allowCPU=true,onProgress=()=>{},onEpoch=()
   onProgress("Converting actual trained WebGPU/CPU weights into ONNX graph…");
   const result=await onnx().exportCausalOnnx(model,{steps:completed});
   onProgress("Running local ONNX Runtime Web validation on exported weights…");
-  const validation=await validateONNX(result,model,tf);
+  const speechPatch=choosePatch(actualPairs,loaded,2048).source;
+  const validation=await validateONNX(result,model,tf,speechPatch);
   const bundle={blob:result,backend,steps:completed,loss:finalLoss,
    sourcePairs:pairs.length,createdAt:new Date().toISOString(),
-   quality:"UNVERIFIED: synthetic TTS voice conversion experiment",
+   quality:validation.nearIdentity
+     ?"FAIL: output nearly identical to source, not a usable voice converter"
+     :"UNVERIFIED: output changes, but speaker identity and sound quality untested",
    validation};
   await data().putMeta("student-onnx",bundle);
-  onProgress("Saved validated ONNX locally. Open Fast Neural AI and select My saved trained model.");
+  onProgress(validation.nearIdentity
+   ?"Exported a valid ONNX, but its audio is nearly identical to the input. This is NOT a successful voice conversion. Test the pretrained 13.7 MB model instead."
+   :"Saved ONNX locally. Output changes, but target speaker similarity is unverified.");
   return bundle;
  }finally{
   optimizer.dispose?.();model.dispose();loaded.clear();
