@@ -70,7 +70,7 @@ vm.runInNewContext(source,context);
   type:"init",model:new ArrayBuffer(65536),historySamples:2048
  }});
  assert(outputs.some(x=>x.type==="ready"),"Small trained neural ONNX did not initialize");
- assert(outputs.some(x=>x.type==="build"&&x.build==="20261106-cacheguard-v5"),
+ assert(outputs.some(x=>x.type==="build"&&x.build==="20261107-voice-safety-v6"),
    "Worker build handshake must be available to fail closed on version mismatches");
  assert(outputs.some(x=>x.type==="stage" && /64\.0 KB neural ONNX/.test(x.text)),
         "Loading status must reflect the actual model size instead of saying 13.7 MB");
@@ -83,20 +83,37 @@ vm.runInNewContext(source,context);
  }
  assert.equal(sessionRuns,3);
  assert.equal(sessionLoads,1,"Neural session must persist across microphone chunks");
+ // Test the user's exact complaint: an experimental ONNX returning input audio
+ // must NEVER feed essentially unmodified speech to the converted output.
+ const playedBefore=outputs.filter(x=>x.type==="audio").length;
+ await self.onmessage({data:{type:"init",model:new ArrayBuffer(66453),
+  historySamples:2048,requireVoiceChange:true}});
+ for(let i=0;i<3;i++)
+  await self.onmessage({data:{type:"convert",pcm:new Float32Array(8192).fill(.25)}});
+ assert.equal(outputs.filter(x=>x.type==="audio").length,playedBefore,
+  "Near-identical experimental model played the original mic as converted speech");
+ assert(outputs.some(x=>x.type==="error"&&/almost unchanged microphone audio/.test(x.text)),
+  "Custom model should explain why near-identity voice conversion was muted");
  await self.onmessage({data:{type:"init",model:new ArrayBuffer(32),historySamples:2048}});
  assert(outputs.some(x=>x.type==="error" && /empty, invalid, or incomplete/.test(x.text)),
         "Empty or obviously incomplete models must be rejected without leaking dry microphone");
  assert(control.includes("capture.connect(ctx.destination)"),"Fail-closed worklet is not connected");
  assert(!control.includes("app.source.connect(ctx.destination)"),"Dry microphone route detected");
  assert(!control.includes("src.connect(ctx.destination)"),"Direct microphone playback detected");
- assert(html.includes('id="rtf"'),"Real-time speed diagnostics missing");
- assert(html.includes("fast-voice.js?v=20261106-cacheguard-v5"),
+ assert(html.includes('<option value="8192" selected>512 ms'),
+   "Default live microphone chunk should be 512 ms on slow Chromebook hardware");
+ assert(html.includes('value="saved"') && html.includes('value="custom"'),
+   "Live UI needs distinct saved auto-load and manual-file ONNX modes");
+ assert(control.includes('requireVoiceChange:["saved","custom"].includes'),
+   "Live controller must enforce no-passthrough protection for saved/manual ONNX models");
+  assert(html.includes('id="rtf"'),"Real-time speed diagnostics missing");
+ assert(html.includes("fast-voice.js?v=20261107-voice-safety-v6"),
    "Page must load matching versioned fast neural controller");
  assert(html.includes('id="reload-engine"')&&html.includes('id="engine-build"'),
    "Page must expose engine version and safe recovery reload");
  assert(control.includes('cache:"no-store"')&&control.includes("new Worker(blobUrl)"),
    "Fast Neural must fetch and verify the worker instead of trusting stale Worker() cache");
- assert(control.includes('const FAST_BUILD="20261106-cacheguard-v5"'),
+ assert(control.includes('const FAST_BUILD="20261107-voice-safety-v6"'),
    "Controller and real streaming worker build IDs must agree");
  assert(!control.includes('new Worker("./fast-voice-worker.js?v=20261106-f1")'),
    "Obsolete fixed worker launch must not recur");
