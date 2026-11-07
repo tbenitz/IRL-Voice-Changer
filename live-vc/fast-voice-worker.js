@@ -9,6 +9,51 @@ const ORT_DIST="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/";
 let ortReady=false, session=null, history=new Float32Array(4096), busy=false, initialized=false;
 let sourceRate=16000;
 let requireVoiceChange=false,unchangedSpeechChunks=0;
+// Optional pitch finishing runs AFTER genuine ONNX speech conversion.
+// It never processes the live microphone directly. At 0 st it leaves
+// trained neural output unchanged; only the ONNX output reaches speakers.
+class NeuralPitchFinish {
+ constructor(){
+  this.size=32768;this.mask=this.size-1;this.buffer=new Float32Array(this.size);
+  this.write=0;this.total=0;this.clock=0;this.grain=800;
+  this.ratio=1;this.semitones=0;
+ }
+ setSemitones(v){
+  const value=Number(v);
+  if(!Number.isFinite(value))throw Error("Post-neural pitch is not finite");
+  this.semitones=Math.max(-12,Math.min(12,value));
+  this.ratio=Math.pow(2,this.semitones/12);
+  this.reset();
+ }
+ reset(){this.buffer.fill(0);this.write=0;this.total=0;this.clock=0}
+ read(delay){
+  const d=Math.min(this.size-4,Math.max(1,delay));
+  const at=(this.write-d+this.size)%this.size;
+  const pos=Math.floor(at),fraction=at-pos;
+  return this.buffer[pos]*(1-fraction)+this.buffer[(pos+1)&this.mask]*fraction;
+ }
+ grainRead(phase){
+  const delta=Math.abs(this.ratio-1)*this.grain;
+  const delay=this.grain*1.7+
+    (this.ratio>=1?(1-phase)*delta:phase*delta);
+  return this.read(delay);
+ }
+ process(pcm){
+  if(Math.abs(this.ratio-1)<1e-7)return pcm; // neural output ONLY, not dry mic
+  const result=new Float32Array(pcm.length),g=this.grain;
+  for(let i=0;i<pcm.length;i++){
+   this.buffer[this.write]=pcm[i];this.write=(this.write+1)&this.mask;
+   this.total++;this.clock++;
+   if(this.total<=g*3)continue;
+   const phase=(this.clock%g)/g,phase2=(phase+.5)%1;
+   const w=.5-.5*Math.cos(2*Math.PI*phase);
+   const y=this.grainRead(phase)*w+this.grainRead(phase2)*(1-w);
+   result[i]=Number.isFinite(y)?Math.max(-1,Math.min(1,y)):0;
+  }
+  return result;
+ }
+}
+const pitchFinish=new NeuralPitchFinish();
 function send(type,details={},transfer=[]){self.postMessage({type,...details},transfer)}
 function err(e){return e?.stack||e?.message||String(e)}
 // Handshake proves the exact compiled worker running the audio pipeline.
@@ -110,20 +155,23 @@ async function infer(chunk){
   history.set(chunk,history.length-chunk.length);
  }
  const inferenceMs=performance.now()-start;
- send("audio",{pcm,inferenceMs,chunkMs:chunk.length/16,rtf:inferenceMs/(chunk.length/16),
-  inputRms,outputRms,changeRatio,correlation},[pcm.buffer]);
+ const finished=pitchFinish.process(pcm);
+ send("audio",{pcm:finished,inferenceMs,chunkMs:chunk.length/16,rtf:inferenceMs/(chunk.length/16),
+  inputRms,outputRms,changeRatio,correlation,
+  postPitchSemitones:pitchFinish.semitones},[finished.buffer]);
 }
 self.onmessage=async event=>{
  const m=event.data||{};
  if(m.type==="stop"){
   initialized=false;session?.release?.().catch(()=>{});session=null;
-  history.fill(0);return;
+  history.fill(0);pitchFinish.reset();return;
  }
  if(m.type==="init"){
   if(busy)return;busy=true;
   try{
    initialized=false;session?.release?.().catch(()=>{});session=null;
-   resetHistory(Number(m.historySamples)||4096);
+   resetHistory(Number(m.historySamples)||16000);
+   pitchFinish.setSemitones(m.pitchSemitones??0);
    requireVoiceChange=m.requireVoiceChange!==false;
    unchangedSpeechChunks=0;
    await loadModel(m.model);
@@ -131,7 +179,11 @@ self.onmessage=async event=>{
   finally{busy=false}
  }else if(m.type==="config"){
   if(!busy){
-   try{resetHistory(Number(m.historySamples)||4096);send("stage",{text:"Neural history window updated"})}
+   try{
+    if(m.historySamples)resetHistory(Number(m.historySamples));
+    if(m.pitchSemitones!==undefined)pitchFinish.setSemitones(m.pitchSemitones);
+    send("stage",{text:"Neural settings updated"});
+   }
    catch(e){send("error",{text:err(e)})}
   }
  }else if(m.type==="convert"){
