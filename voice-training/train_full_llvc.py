@@ -88,7 +88,7 @@ def setup(upstream, output, dataset, steps, batch):
             progress_marker,
             progress_marker +
             "            if global_step % 25 == 0 and is_main_process:\n"
-            "                print(f'LLVC training {global_step}/{config[\\'max_steps\\']} steps', flush=True)\n"
+            "                print('LLVC training {}/{} steps'.format(global_step, config.get('max_steps')), flush=True)\\n"
         )
         # On a fresh run use the published full-size LLVC generator as the
         # initial model. On resume use our saved G/D training checkpoints.
