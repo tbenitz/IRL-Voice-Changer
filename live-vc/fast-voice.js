@@ -123,8 +123,11 @@ async function getModel(){
   const model=await savedStudentModel();
   if(!model?.blob||!model.validation)
    throw Error("No validated custom ONNX saved. Open Pocket Studio, generate training speech and complete local training first.");
+  if(model.trainingData!=="teacher-parallel")
+   throw Error("Your saved "+(model.blob.size/1024).toFixed(0)+
+    " KB model was generated from INDEPENDENT Pocket TTS audio. That training data is not aligned and cannot teach a working custom neural voice. The old file is still saved for research, but will NOT be presented as a voice clone. Import original/converted recordings from a real custom-trained voice-conversion teacher to start a valid training experiment.");
   if(model.validation.nearIdentity)
-   throw Error("Your saved experimental ONNX failed the voice-change test: it outputs nearly unchanged microphone audio. This is not a usable custom speaker clone. Try one of the trained 13.7 MB voice presets instead. Your saved file was not deleted.");
+   throw Error("Your saved experimental adapter failed the voice-change test: nearly unchanged microphone audio. The file was preserved, but it is not a working custom speaker clone.");
   if(model.blob.size>40e6)throw Error("Saved model is unexpectedly large.");
   $("download-status").textContent="Loaded the "+(model.blob.size/1024).toFixed(0)+
     " KB locally trained ONNX model from Pocket Studio (voice quality unverified).";
