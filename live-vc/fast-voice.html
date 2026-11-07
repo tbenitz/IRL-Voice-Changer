@@ -46,7 +46,7 @@ progress{width:100%;height:13px;accent-color:var(--mint)}
 <main>
 <span class="eyebrow">Fast neural voice conversion • ChromeOS • local processing</span>
 <h1>Live AI voice.<br><em>Without giant RVC models.</em></h1>
-<p class="lead">A real, trained streaming neural voice converter. It uses a single 13.7 MB causal ONNX model, not ContentVec + RMVPE + a five-second RVC generator. Everything runs in your browser, with a fail-closed microphone and measured performance.</p>
+<p class="lead">A browser-based ONNX voice-conversion experiment with pretrained 13.7 MB models. A loaded model or a changed waveform does not mean its output resembles the target speaker. The 65 KB Pocket student is not a verified live speaker clone.</p>
 <div class="layout">
 <section class="panel">
   <div class="top"><div><span class="eyebrow">Neural microphone conversion</span><h2>Fast AI Studio</h2></div><span class="status" id="badge">OFF · MUTED</span></div>
@@ -75,11 +75,11 @@ progress{width:100%;height:13px;accent-color:var(--mint)}
     <label class="field">Previous audio context
       <select id="history">
         <option value="2048">128 ms · max speed</option>
-        <option value="4096" selected>256 ms · balanced</option>
+        <option value="4096">256 ms · low CPU / experimental</option>
         <option value="8000">500 ms · higher context</option>
-        <option value="16000">1000 ms · highest context, slower</option>
+        <option value="16000" selected>1000 ms · native-model reference context</option>
       </select>
-      <small>Increasing this can improve sound consistency but slows inference.</small>
+      <small>The upstream 13.7 MB streaming engine uses 1000 ms of previous audio. The earlier 256 ms browser default could reduce quality. This is slower on weak CPUs; try 500 ms if output drops.</small>
     </label>
   </div>
   <label class="field">Converted output level <span id="volume-value">80%</span>
@@ -93,19 +93,19 @@ progress{width:100%;height:13px;accent-color:var(--mint)}
   <div class="notice">Wear headphones. If the ONNX worker crashes, slows down excessively, or cannot run, converted output is muted. Your unmodified microphone is never automatically sent to speakers.</div>
 </section>
 <section class="panel">
-  <span class="eyebrow">Measured on your device</span><h2>Neural performance</h2>
+  <span class="eyebrow">Measured on your device</span><h2>Signal and inference diagnostics</h2><p class="fine"><b>Speaker identity: NOT VERIFIED.</b> These statistics are not proof of voice conversion. Listen to the ONNX WAV audition for actual timbre.</p>
   <div class="stats">
     <div class="stat"><b id="lag">—</b><span>Estimated mic-to-playback delay (ms)</span></div>
     <div class="stat"><b id="inference">—</b><span>Latest neural inference (ms)</span></div>
     <div class="stat"><b id="rtf">—</b><span>Real-time factor (under 1.0 is good)</span></div>
     <div class="stat"><b id="drops">0</b><span>Audio blocks dropped</span></div>
-    <div class="stat"><b id="wave-change">—</b><span>ONNX output waveform change vs microphone</span></div>
+    <div class="stat"><b id="wave-change">—</b><span>Waveform change ONLY (not a voice-match score)</span></div>
     <div class="stat"><b id="wave-corr">—</b><span>Input/output waveform correlation (1.00 = near-identical)</span></div>
   </div>
   <p>Microphone input level</p><div class="bar"><i id="input-meter"></i></div>
   <p>Changed voice output level</p><div class="bar"><i id="output-meter"></i></div>
   <p id="performance-note">No benchmark measured yet.</p>
-  <p id="voice-change-note">Waveform change is measured from the actual ONNX output. This is NOT a speaker-identity score.</p>
+  <p id="voice-change-note"><b>VOICE IDENTITY NOT VERIFIED.</b> A signal difference—even a large one—may only be a filter, gain or distortion. Use the A/B clips to judge whether a different voice is audible.</p>
   <div style="border:1px solid #3a6976;border-radius:12px;padding:16px;margin-top:18px">
     <strong>A/B recording test • actual model output</strong>
     <p class="fine">With headphones on, click Capture while the model is LIVE and speak for 8 seconds. Two local WAV clips will let you compare the captured microphone with the exact PCM returned by the neural ONNX worker. Neither recording is automatically played or uploaded.</p>
