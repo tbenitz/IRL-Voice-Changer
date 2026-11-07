@@ -36,13 +36,16 @@ const fakeORT={
     }
    };
    return {
-    inputNames:["phone","phone_lengths","pitch","nsff0","sid","rnd"],
+    inputNames:["phone","phone_lengths","pitch","pitchf","ds","rnd"],
+    inputMetadata:{phone:{dimensions:[1,512,768]}},
     outputNames:["audio"],
     async run(feeds){
      genCalls++;
      assert(feeds.phone instanceof Tensor);
      assert(feeds.pitch instanceof Tensor);
      assert.equal(feeds.phone.dims[2],768);
+     assert.equal(feeds.phone.dims[1],512,"Fixed-size voice must receive 512 padded frames");
+     assert.equal(feeds.rnd.dims[2],512,"Fixed frame noise shape wrong");
      const count=feeds.phone.dims[1]*480,pcm=new Float32Array(count);
      for(let i=0;i<count;i++)pcm[i]=.2*Math.sin(i*2*Math.PI*220/48000);
      return {audio:new Tensor("float32",pcm,[1,1,count])};
@@ -66,7 +69,7 @@ const wait=(ms=80)=>new Promise(r=>setTimeout(r,ms));
  assert.equal(typeof self.onmessage,"function");
  await self.onmessage({data:{
   type:"init",voice:new ArrayBuffer(12),contentVec:new ArrayBuffer(12),
-  rmvpe:new ArrayBuffer(12),sampleRate:48000
+  rmvpe:new ArrayBuffer(12),sampleRate:48000,fixedVoiceFrames:512
  }});
  assert(msgs.some(x=>x.type==="ready"),"ONNX models failed to load");
  assert.equal(sessions,3,"Sessions should be created only on init");
@@ -79,6 +82,7 @@ const wait=(ms=80)=>new Promise(r=>setTimeout(r,ms));
   assert(converted.pcm instanceof Float32Array,"Output not float32");
   assert(converted.pcm.some(x=>Math.abs(x)>.1),"Converted audio all silent");
   assert(converted.pcm.every(Number.isFinite),"Converted audio contains invalid values");
+  assert(converted.pcm.length < 512*480,"Padded output was not trimmed to actual microphone block");
  }
  assert.equal(sessions,3,"ONNX sessions recreated for every block: not streaming");
  assert.equal(featureCalls,2);
