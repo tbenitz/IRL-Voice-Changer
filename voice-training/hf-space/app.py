@@ -13,9 +13,29 @@ import zipfile
 import gradio as gr
 
 ROOT = Path("/app")
-# /data is not writable unless an appropriate storage volume is mounted.
-# Use the pre-created user-owned directory, even on Spaces without /data.
-WORKSPACE = Path(os.environ.get("VOICE_WORKSPACE", "/home/user/voice-data"))
+
+
+def select_workspace():
+    # Honor explicitly mounted read/write persistent storage when configured.
+    chosen = os.environ.get("VOICE_WORKSPACE", "").strip()
+    if chosen and chosen.lower() != "auto":
+        target = Path(chosen).resolve()
+        if not target.is_dir() or not os.access(target, os.W_OK):
+            raise RuntimeError(f"VOICE_WORKSPACE is not a writable directory: {target}")
+        return target
+    bucket = Path("/data")
+    if bucket.is_dir() and os.access(bucket, os.W_OK):
+        return bucket
+    return Path("/home/user/voice-data")
+
+
+WORKSPACE = select_workspace()
+for folder_name in ("voice-jobs", "voice-cache", "hf-cache", "torch-cache"):
+    (WORKSPACE / folder_name).mkdir(parents=True, exist_ok=True)
+# Let all child training processes reuse caches across runs/restarts when a
+# persistent HF Storage Bucket is mounted at /data.
+os.environ["HF_HOME"] = str(WORKSPACE / "hf-cache")
+os.environ["TORCH_HOME"] = str(WORKSPACE / "torch-cache")
 JOBS = WORKSPACE / "voice-jobs"
 CACHE = WORKSPACE / "voice-cache"
 
@@ -265,10 +285,14 @@ with gr.Blocks(title="Custom Neural Voice Trainer") as demo:
         outputs=[status, bundle, progress_panel], concurrency_limit=1,
     )
     gr.Markdown(
-        "Checkpoints and intermediate data stay on this Space's disk. "
-        "Attach a Storage Bucket for persistence across restarts; "
-        "otherwise download your ZIP when it finishes. "
-        "ONNX inference is verified, but matching a target speaker still requires listening."
+        f"**Storage location:** `{WORKSPACE}`. "
+        + ("A writable /data volume is being used for jobs and model caches. "
+           if WORKSPACE == Path("/data") else
+           "**Temporary storage** — pausing, stopping or rebuilding the Space "
+           "can erase saved pairs and models. Attach a read-write Storage Bucket "
+           "at /data before starting a paid training run. ")
+        + "The model download becomes available after PTH + ONNX validation. "
+        "ONNX execution checks do not prove the voice sounds like the reference."
     )
 
 demo.queue(default_concurrency_limit=1, max_size=4)
