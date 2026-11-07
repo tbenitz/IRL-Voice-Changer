@@ -132,8 +132,14 @@ async function validateONNX(blob,model,tf,probeSignal=null){
 async function runTraining({steps=240,allowCPU=true,onProgress=()=>{},onEpoch=()=>{},cancelled=()=>false}={}){
  if(!onnx())throw Error("Local ONNX exporter not loaded");
  if(!data())throw Error("Local training database not loaded");
- const pairs=(await data().listPairs()).filter(p=>p.source&&p.target);
- if(pairs.length<4)throw Error("Need at least 4 paired Pocket TTS sentences before training.");
+ // The source and target must be from the SAME recording converted by
+ // a trained teacher. Independent Pocket TTS renditions are not frame
+ // aligned, even if the transcript and overall duration match.
+ const pairs=(await data().listPairs()).filter(p=>
+  p.source&&p.target&&p.mode==="teacher-parallel");
+ if(pairs.length<4)throw Error("No real teacher-aligned dataset. Need at least four ORIGINAL / teacher-CONVERTED WAV pairs made by running a trained custom voice-conversion teacher on each SAME source recording. Independently generated Pocket TTS pairs cannot train this student.");
+ if(pairs.length<50)onProgress("WARNING: "+pairs.length+
+  " aligned teacher pairs are enough for a research smoke test, NOT a high-quality voice clone. The published 13MB model used hundreds of aligned examples and roughly 10,000 training updates.");
  const loaded=await cacheSamples(pairs,Math.min(pairs.length,12));
  const actualPairs=pairs.filter(p=>loaded.has(p.id));
  const device=await setupTF(onProgress,allowCPU);
@@ -157,13 +163,13 @@ async function runTraining({steps=240,allowCPU=true,onProgress=()=>{},onEpoch=()
    let loss=null;
    let retryCPU=false;
    try{
-    // Train actual weights; identity preservation discourages output collapse
-    // caused by imperfect alignment between independently generated TTS clips.
+    // With teacher-converted pairs, actively rewarding identity passthrough
+    // is wrong: the old preservation term made the trained model sound dry.
+    // This remains only a small research waveform objective, NOT the
+    // multi-resolution spectral + adversarial LLVC training procedure.
     loss=optimizer.minimize(()=>tf.tidy(()=>{
      const prediction=model.apply(source);
-     const l1=prediction.sub(target).square().mean();
-     const preservation=prediction.sub(source).square().mean();
-     return l1.add(preservation.mul(.2));
+     return prediction.sub(target).square().mean();
     }),true);
     if(!loss)throw Error("Training produced no loss tensor");
     finalLoss=(await loss.data())[0];
@@ -200,10 +206,10 @@ async function runTraining({steps=240,allowCPU=true,onProgress=()=>{},onEpoch=()
   const speechPatch=choosePatch(actualPairs,loaded,2048).source;
   const validation=await validateONNX(result,model,tf,speechPatch);
   const bundle={blob:result,backend,steps:completed,loss:finalLoss,
-   sourcePairs:pairs.length,createdAt:new Date().toISOString(),
+   sourcePairs:pairs.length,trainingData:"teacher-parallel",createdAt:new Date().toISOString(),
    quality:validation.nearIdentity
-     ?"FAIL: output nearly identical to source, not a usable voice converter"
-     :"UNVERIFIED: output changes, but speaker identity and sound quality untested",
+     ?"FAIL: almost unchanged microphone; not a voice converter"
+     :"RESEARCH ONLY: small audio adapter on imported teacher data, target-speaker identity and sound quality NOT validated",
    validation};
   await data().putMeta("student-onnx",bundle);
   onProgress(validation.nearIdentity
