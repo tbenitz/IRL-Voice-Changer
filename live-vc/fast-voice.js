@@ -71,8 +71,33 @@ async function cacheModel(name,blob){
  }catch(e){console.warn("Voice cache unavailable; this session still works",e.message)}
  finally{db?.close()}
 }
+async function savedStudentModel(){
+ return await new Promise((resolve,reject)=>{
+  const open=indexedDB.open("pocket-streaming-student-v1",1);
+  open.onerror=()=>reject(open.error||Error("Cannot open saved trainer models"));
+  open.onupgradeneeded=()=>{}; // No synthetic model is created automatically here.
+  open.onsuccess=()=>{
+   const db=open.result;
+   if(!db.objectStoreNames.contains("meta")){
+    db.close();reject(Error("No Pocket-trained model found. Generate pairs and train in Pocket Studio first."));return;
+   }
+   const req=db.transaction("meta","readonly").objectStore("meta").get("student-onnx");
+   req.onsuccess=()=>{db.close();resolve(req.result?.value||null)};
+   req.onerror=()=>{db.close();reject(req.error||Error("Could not read saved trained ONNX"))};
+  };
+ });
+}
 async function getModel(){
  const choice=$("voice").value;
+ if(choice==="saved"){
+  const model=await savedStudentModel();
+  if(!model?.blob||!model.validation)
+   throw Error("No validated custom ONNX saved. Open Pocket Studio, prepare data and complete local training first.");
+  if(model.blob.size>40e6)throw Error("Saved model is unexpectedly large.");
+  $("download-status").textContent="Loaded the "+(model.blob.size/1024).toFixed(0)+
+    " KB locally trained ONNX model from Pocket Studio (voice quality unverified).";
+  return await model.blob.arrayBuffer();
+ }
  if(choice==="custom"){
   const selected=$("model-file").files?.[0];
   if(!selected)throw Error("Select a compatible causal 16kHz ONNX voice checkpoint before starting.");
