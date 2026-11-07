@@ -55,10 +55,10 @@ progress{width:100%;height:13px;accent-color:var(--mint)}
       <option value="hfg">Female — streaming LLVC student (13.7 MB)</option>
       <option value="old_hq">Female — alternate HQ checkpoint (13.7 MB)</option>
       <option value="old">Female — original checkpoint (13.7 MB)</option>
-      <option value="saved">Use my saved trained ONNX automatically (Pocket Studio, no upload)</option>
+      <option value="saved">My experimental custom ONNX (research only; quality not verified)</option>
       <option value="custom">Import ONNX file from Chromebook (manual upload)</option>
     </select>
-    <small><b>Saved trained ONNX:</b> automatically loads your last trained model from Pocket Studio in this same browser. <b>Import ONNX file:</b> choose the model from your Downloads folder. You only need one of these options, not both. Neither accepts an ordinary RVC checkpoint.</small>
+    <small><b>Experimental saved ONNX:</b> loads only a research model produced from properly aligned teacher pairs; old independent-Pocket TTS models are rejected, not treated as a voice clone. <b>Import ONNX file:</b> choose the model from your Downloads folder. You only need one of these options, not both. Neither accepts an ordinary RVC checkpoint.</small>
     <small id="voice-mode-detail">The 13.7 MB pre-trained model is actual speaker conversion. Unlike it, tiny experimental Pocket students may preserve the input voice and fail the voice-change check.</small>
   </label>
   <label class="field" id="custom-field" hidden>Compatible custom ONNX model<input id="model-file" type="file" accept=".onnx"></label>
@@ -76,10 +76,10 @@ progress{width:100%;height:13px;accent-color:var(--mint)}
       <select id="history">
         <option value="2048">128 ms · max speed</option>
         <option value="4096" selected>256 ms · balanced</option>
-        <option value="8000">500 ms · higher context</option>
-        <option value="16000">1000 ms · highest context, slower</option>
+        <option value="8000">500 ms · slower; auto-reduces if overloaded</option>
+        <option value="16000">1000 ms · CPU-heavy; auto-reduces if overloaded</option>
       </select>
-      <small>Increasing this can improve sound consistency but slows inference.</small>
+      <small>500–1,000 ms previous context may overload a Chromebook and cause dropped words. The app now automatically shortens context without deleting the audio history; if inference still cannot keep up, it mutes with an explicit error instead of playing chopped speech. The existing 256 ms default is retained.</small>
     </label>
   </div>
   <label class="field">Converted output level <span id="volume-value">80%</span>
@@ -90,7 +90,7 @@ progress{width:100%;height:13px;accent-color:var(--mint)}
   <p class="fine" id="download-status">Model downloads once on first use and is cached when Chrome storage permits. No microphone audio leaves your device.</p>
   <p class="fine" id="engine-build">Neural runtime build: 20261107-output-audit-v8 · verified worker startup</p>
   <div id="status-text" role="status" aria-live="polite">Ready. The microphone is off, original audio is muted, and no AI model is running.</div>
-  <div class="notice">Wear headphones. If the ONNX worker crashes, slows down excessively, or cannot run, converted output is muted. Your unmodified microphone is never automatically sent to speakers.</div>
+  <div class="notice">Wear headphones. If the model cannot process every speech chunk fast enough, the app will shorten previous-audio context and finally stop rather than skip entire words. A 65 KB ONNX file that loads successfully is NOT automatically a trained custom voice. The original microphone is never automatically sent to speakers.</div>
 </section>
 <section class="panel">
   <span class="eyebrow">Measured on your device</span><h2>Neural performance</h2>
