@@ -300,8 +300,11 @@ async function refresh(){
  S.goal=Number($("trainer-goal").value);
  const saved=await D.getMeta("student-onnx");
  $("trainer-onnx").disabled=!saved?.value?.blob;
- if(saved?.value?.blob)trainNotice("Saved, locally validated ONNX ("+
- (saved.value.blob.size/1024).toFixed(0)+" KB). Select My saved trained model in Fast Neural AI. Voice identity has not been verified.");
+ if(saved?.value?.blob)trainNotice(saved.value.validation?.nearIdentity
+  ? "Saved ONNX ("+(saved.value.blob.size/1024).toFixed(0)+
+    " KB) is a valid model file, but it produced almost unchanged audio in the training test. It is NOT a working voice clone. You may still download it for inspection."
+  : "Saved experimental ONNX ("+(saved.value.blob.size/1024).toFixed(0)+
+    " KB). Model export was validated; voice identity has NOT been verified.");
  render();
 }
 $("trainer-goal").addEventListener("change",()=>{S.goal=Number($("trainer-goal").value);render()});
@@ -486,10 +489,11 @@ $("trainer-train").addEventListener("click",async()=>{
       "\nResult is a limited experimental causal voice adapter.")
   });
   $("trainer-onnx").disabled=false;
-  trainNotice("Saved VALIDATED learned ONNX ("+(out.blob.size/1024).toFixed(0)+
-   " KB) after "+out.steps+" real updates on "+out.backend.toUpperCase()+
-   ". Automatically saved in this browser. Open Fast Neural AI and select My saved trained model."+
-   "\nVoice similarity is NOT verified and may be weak.");
+  if(out.validation?.nearIdentity)
+   trainNotice("ONNX export saved, but the student FAILED voice-change validation: nearly identical microphone output after "+
+    out.steps+" gradient updates. It is NOT a trained speaker voice you can use live. You can download the ONNX for research, but try the 13.7 MB pre-trained voice for genuine conversion.",true);
+  else trainNotice("Exported and validated "+(out.blob.size/1024).toFixed(0)+
+   " KB ONNX after "+out.steps+" updates. The output changes, but speaker identity and sound quality remain unverified.");
  }catch(e){trainNotice("Training/export failed: "+e.message,true)}
  finally{S.training=false;S.cancelTraining=false;render()}
 });
