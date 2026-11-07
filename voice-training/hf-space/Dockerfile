@@ -32,7 +32,7 @@ COPY app.py /app/app.py
 
 RUN useradd -m -u 1000 user && \
     mkdir -p /data/voice-jobs /data/voice-cache /data/hf-cache && \
-    chown -R user:user /data /app/app.py
+    chown -R user:user /data /app/app.py /app/seed-vc /app/llvc-upstream
 
 USER user
 EXPOSE 7860
