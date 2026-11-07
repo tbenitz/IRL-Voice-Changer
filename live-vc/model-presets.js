@@ -25,6 +25,15 @@
   let preparing = null;
   let controller = null;
   const DB="irl-rvc-voice-models-v3", STORE="weights";
+  // Recover disk quota used by the old unsupported q8/ConvInteger downloads.
+  // This is the dedicated RVC weight cache only; no microphone or user files
+  // are persisted here, and no other website storage is cleared.
+  try {
+    const oldCache=indexedDB.deleteDatabase("irl-rvc-voice-models-v2");
+    oldCache.onblocked=()=>console.debug("Close other older RVC tabs to finish removing incompatible Q8 cached weights.");
+    oldCache.onerror=()=>console.debug("Old Q8 model cache could not be removed; it will never be loaded.");
+  } catch(_) { /* disabled storage: continue without caching */ }
+
   const progress = $("rvc-model-progress");
   const select = $("rvc-preset");
   const status = $("rvc-model-status");
