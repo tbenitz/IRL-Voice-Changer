@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Train the real KoeAI LLVC causal model and export a browser-compatible ONNX.
+"""Fine-tune the pretrained KoeAI LLVC HFG model and export a browser ONNX.
 
 GPU required. No fake 70 KB audio adapter, no randomly created placeholder
 weights, no independent TTS audio pairs. Requires a genuine teacher-generated
@@ -29,9 +29,16 @@ def validate_data(path):
     return counts
 
 def setup(upstream, output, dataset, steps, batch):
-    config_path = upstream / "experiments" / "llvc" / "config.json"
+    config_path = upstream / "experiments" / "llvc_hfg" / "config.json"
     require(config_path.is_file(), "Missing official KoeAI LLVC source/config")
     config = json.loads(config_path.read_text())
+    # Fine-tune the already trained 39.5 MB HiFi-GAN LLVC PyTorch
+    # checkpoint, never train a new 13 MB network from random initialization.
+    from huggingface_hub import hf_hub_download
+    checkpoint = hf_hub_download(repo_id="KoeAI/llvc_models",
+        filename="models/checkpoints/llvc_hfg/G_500000.pth")
+    require(Path(checkpoint).is_file(), "Official LLVC pretrained checkpoint missing")
+    config["pretrained_generator"] = str(Path(checkpoint).resolve())
     config["data"]["dir"] = str(dataset)
     config["data"]["sr"] = 16000
     config["batch_size"] = batch
@@ -39,11 +46,9 @@ def setup(upstream, output, dataset, steps, batch):
     # Use the real LLVC causal encoder/transformer architecture, not the
     # previous 4-layer 65KB Pocket waveform adapter.
     # Reuse official architecture dimensions to preserve compatibility.
-    config["model_params"]["lookahead"] = False
-    config["model_params"]["dec_buf_len"] = 100
-    config["model_params"]["dec_chunk_size"] = 72
-    config["model_params"]["decoder_dropout"] = 0.0
-    config["model_params"]["out_buf_len"] = 2
+    # IMPORTANT: preserve every official llvc_hfg model parameter unchanged.
+    # Its pretrained generator is NOT shape-compatible with the v1 Pocket
+    # adapter or with arbitrary low-lookahead decoder dimensions.
     config["aux_fairseq"]["c"] = 0
     config["discriminator"] = "hfg"
     config["fp16_run"] = True
@@ -74,6 +79,18 @@ def setup(upstream, output, dataset, steps, batch):
             "                    return\n"
         )
         original = original.replace(key, patch + key)
+        # On a fresh run use the published full-size LLVC generator as the
+        # initial model. On resume use our saved G/D training checkpoints.
+        init_marker = "        epoch = 0\n"
+        require(original.count(init_marker) == 1,
+                "Official generator initialization changed; refusing unsafe patch")
+        original = original.replace(init_marker,
+            init_marker +
+            "        if config.get('pretrained_generator'):\n"
+            "            print('Fine-tuning official pretrained LLVC HFG generator', flush=True)\n"
+            "            initial = torch.load(config['pretrained_generator'], map_location='cpu', weights_only=False)\n"
+            "            net_g.load_state_dict(initial['model'], strict=True)\n"
+            "            del initial\n")
         train.write_text(original)
     return config
 
@@ -134,7 +151,7 @@ def export(upstream, output, steps, name):
     require(onnx_path.stat().st_size > 2_000_000,
             "Full LLVC model unexpectedly tiny; refusing to label it a full trained model")
     report = {
-        "type": "trained-full-LLVC-streaming-ONNX", "steps": steps,
+        "type": "pretrained-LLVC-HFG-finetuned-streaming-ONNX", "steps": steps,
         "file": onnx_path.name, "size_bytes": onnx_path.stat().st_size,
         "onnx_io": "audio_in -> audio_out", "sample_rate": 16000,
         "inference_checks": results,
@@ -155,7 +172,8 @@ def main():
     a = p.parse_args()
     import torch
     require(torch.cuda.is_available(), "Full LLVC distillation requires a CUDA GPU; no CPU-only pretend run")
-    require(500 <= a.steps <= 50000, "Use 500–50000 real training updates")
+    require(500 <= a.steps <= 50000 and a.steps % 500 == 0,
+            "Use 500–50000 real training updates in multiples of 500")
     require(1 <= a.batch <= 16, "Batch size must be 1–16")
     print("Genuine teacher corpus:", validate_data(a.dataset.resolve()), flush=True)
     upstream = a.llvc.resolve()
