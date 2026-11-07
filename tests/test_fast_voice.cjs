@@ -70,7 +70,7 @@ vm.runInNewContext(source,context);
   type:"init",model:new ArrayBuffer(65536),historySamples:2048,requireVoiceChange:false
  }});
  assert(outputs.some(x=>x.type==="ready"),"Small trained neural ONNX did not initialize");
- assert(outputs.some(x=>x.type==="build"&&x.build==="20261107-voice-safety-v7"),
+ assert(outputs.some(x=>x.type==="build"&&x.build==="20261107-output-audit-v8"),
    "Worker build handshake must be available to fail closed on version mismatches");
  assert(outputs.some(x=>x.type==="stage" && /64\.0 KB neural ONNX/.test(x.text)),
         "Loading status must reflect the actual model size instead of saying 13.7 MB");
@@ -115,13 +115,13 @@ vm.runInNewContext(source,context);
   "Actual ONNX output and original microphone must have local side-by-side recorded previews");
  assert(control.includes("collectAudit(app.inFlightSource,pcm)"),
   "Only the real ONNX PCM received through the worker may be saved as the neural A/B test");
- assert(html.includes("fast-voice.js?v=20261107-voice-safety-v7"),
+ assert(html.includes("fast-voice.js?v=20261107-output-audit-v8"),
    "Page must load matching versioned fast neural controller");
  assert(html.includes('id="reload-engine"')&&html.includes('id="engine-build"'),
    "Page must expose engine version and safe recovery reload");
  assert(control.includes('cache:"no-store"')&&control.includes("new Worker(blobUrl)"),
    "Fast Neural must fetch and verify the worker instead of trusting stale Worker() cache");
- assert(control.includes('const FAST_BUILD="20261107-voice-safety-v7"'),
+ assert(control.includes('const FAST_BUILD="20261107-output-audit-v8"'),
    "Controller and real streaming worker build IDs must agree");
  assert(!control.includes('new Worker("./fast-voice-worker.js?v=20261106-f1")'),
    "Obsolete fixed worker launch must not recur");
