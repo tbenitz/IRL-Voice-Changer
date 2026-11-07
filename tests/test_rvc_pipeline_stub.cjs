@@ -18,13 +18,19 @@ const fakeORT={
   async create(_bytes,_opts){
    const index=sessions++;
    if(index===0)return {
-    inputNames:["source"],inputMetadata:{source:{dimensions:[1,1,"samples"]}},outputNames:["features"],
+    inputNames:["audio"],inputMetadata:{audio:{dimensions:[1,"samples"]}},outputNames:["units9","unit12","unit12s"],
     async run(feeds){
      featureCalls++;
-     assert(feeds.source instanceof Tensor);
-     const n=feeds.source.data.length,frames=Math.max(1,Math.floor(n/320));
-     const arr=new Float32Array(768*frames).fill(.12);
-     return {features:new Tensor("float32",arr,[1,768,frames])};
+     assert(feeds.audio instanceof Tensor);
+     const n=feeds.audio.data.length,frames=Math.max(1,Math.floor(n/320));
+     const v1=new Float32Array(256*frames).fill(.27);
+     const v2=new Float32Array(768*frames).fill(.12);
+     const v2s=new Float32Array(768*frames).fill(.14);
+     return {
+      units9:new Tensor("float32",v1,[1,frames,256]),
+      unit12:new Tensor("float32",v2,[1,frames,768]),
+      unit12s:new Tensor("float32",v2s,[1,frames,768])
+     };
     }
    };
    if(index===1)return {
@@ -119,6 +125,8 @@ const wait=(ms=80)=>new Promise(r=>setTimeout(r,ms));
  assert.equal(featureCalls,2);
  assert.equal(pitchCalls,2);
  assert.equal(genCalls,2);
+ assert(msgs.some(x=>x.type==="stage" && /ContentVec unit12 .*768 channels/.test(x.text)),
+        "Did not select the correct 768-channel 'unit12' output after the first 256-channel 'units9' output");
  assert(msgs.some(x=>x.type==="idle"),"Worker never released inference busy status");
  console.log("PASS: persistent RVC ONNX sessions and two microphone chunks converted by content, F0 and generator pipeline (mock ONNX only).");
 })().catch(e=>{console.error(e);process.exitCode=1});
