@@ -3,6 +3,7 @@
  */
 const assert=require("node:assert/strict"),fs=require("node:fs"),path=require("node:path");
 const {JSDOM}=require("jsdom");
+const vm=require("node:vm");
 const dom=new JSDOM(
  '<!doctype html><html><head></head><body><div id="model-setup"></div>'+
  '<select id="voice-select"><option value="custom">Custom</option><option value="alba">Alba</option><option value="cosette">Cosette</option></select>'+
@@ -124,6 +125,41 @@ async function reset(){
  assert.equal(playCount,0,"Neither voice must play during experimental pairs");
  assert(!win.document.getElementById("download-personal"),"Windows EXE must be absent");
  const appSource=fs.readFileSync(path.join(__dirname,"../pocket-demo/studio/app.js"),"utf8");
+ // Exercise the ACTUAL Pocket controller prototype directly without constructing
+ // a browser UI. In silent mode even the first generation must not instantiate
+ // an AudioContext/PCMPlayer, and the completion path must not request playback.
+ const bootless=appSource
+  .replace(/^import .*;\s*$/m,"const PCMPlayer = class {};\n")
+  .replace("window.__pocketApp = new PocketVoice();","window.PocketVoice = PocketVoice;");
+ const ctx={window:{},performance:{now:()=>1000},console,Float32Array,URL};
+ vm.runInNewContext(bootless,ctx);
+ assert(ctx.window.PocketVoice,"The real app class should load for prototype tests");
+ const actual=Object.create(ctx.window.PocketVoice.prototype);
+ const noOp=()=>{};
+ const classList={add:noOp,remove:noOp,toggle:noOp};
+ let outputMessages=0,resetCalls=0;
+ actual.isWorkerReady=true;actual.isGenerating=false;actual.isVoiceEncoding=false;
+ actual.silentBatchMode=true;actual.player=null;actual.lastAudioUrl=null;
+ actual.ensureAudioContext=async()=>{throw Error("AudioContext should not open during silent speech batch")};
+ actual.resetUI=()=>{resetCalls++};
+ actual.el={
+  textInput:{value:"Please synthesize this in silence"},voiceSelect:{value:"cosette"},
+  btnGenerate:{classList,disabled:false},btnStop:{style:{display:"none"}},
+  btnDownload:{disabled:false},statTTFB:{textContent:""},
+  statRTFx:{textContent:""}
+ };
+ actual.worker={postMessage(m){assert.equal(m.type,"generate");outputMessages++}};
+ await actual.generate();
+ assert.equal(outputMessages,1);
+ assert.equal(actual.isGenerating,true);
+ actual.handleAudioChunk(new Float32Array(1200).fill(.08),null);
+ assert.equal(actual.currentChunks.length,1);
+ actual.handleStreamEnd();
+ assert.equal(actual.isGenerating,false);
+ assert.equal(resetCalls,1);
+ assert.equal(actual.currentChunks[0].length,1200,
+  "Actual generated PCM must remain available for silent dataset saving");
+
  assert(appSource.includes("this.silentBatchMode")&&
   appSource.includes("if (!this.silentBatchMode) this.player.playAudio(pcm)")&&
   appSource.includes("if (this.silentBatchMode) {"),
