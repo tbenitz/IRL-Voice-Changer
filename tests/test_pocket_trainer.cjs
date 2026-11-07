@@ -37,7 +37,7 @@ function signal(n){const x=new Float32Array(n);for(let i=0;i<n;i++)x[i]=.15*Math
  const onnx=await exporter.exportCausalOnnx(m);
  assert(onnx.size>1000&&onnx.size<1000000,"ONNX output empty or unexpectedly large");
  fs.writeFileSync("/tmp/pocket-trained-student.onnx",new Uint8Array(await onnx.arrayBuffer()));
- ort.env.wasm.wasmPaths=path.dirname(require.resolve("onnxruntime-web/dist/ort.min.js"))+path.sep;
+ ort.env.wasm.wasmPaths=path.join(process.cwd(),"node_modules","onnxruntime-web","dist")+path.sep;
  ort.env.wasm.numThreads=1;
  const session=await ort.InferenceSession.create(await onnx.arrayBuffer(),{
   executionProviders:["wasm"],graphOptimizationLevel:"basic"
