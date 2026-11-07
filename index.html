@@ -28,7 +28,7 @@ footer{border-top:1px solid var(--line);color:var(--sub);font-size:13px;padding:
 <main>
 <div class="kicker">LIVE VOICE TRANSFORMATION · CHROMEBOOK READY</div>
 <h1>Talk in.<br>Hear a changed voice.</h1>
-<p class="lead">Start with the new 13.7 MB on-device streaming neural voice converter, or use the DSP microphone changer. The heavier RVC laboratory remains available for high-quality offline testing. The separate RVC recording lab is available for file conversion before attempting live inference. Other engine demos are hosted, while the Windows desktop app runs their native live versions.</p>
+<p class="lead">Start with the new 13.7 MB on-device streaming neural voice converter, or use the DSP microphone changer. The heavier RVC laboratory remains available for high-quality offline testing. The separate RVC recording lab is available for file conversion before attempting live inference. Other engine demos may be hosted; this repository itself provides only browser-based modes.</p>
 <div class="buttons">
 <a class="button" href="./live-vc/fast-voice.html">⚡ Start fast neural voice changer</a>
 <a class="button secondary" href="./live-vc/">🎙 DSP voice changer</a>
@@ -36,13 +36,13 @@ footer{border-top:1px solid var(--line);color:var(--sub);font-size:13px;padding:
 <a class="button secondary" href="./live-vc/#rvc">Convert with RVC ONNX ↗</a>
 <a class="button secondary" href="./pocket-demo/studio/#pocket-trainer">Train custom ONNX with Pocket ↗</a>
 <a class="button secondary" href="./online-test/">Compare other VC models</a>
-<a class="button secondary" href="https://github.com/tbenitz/IRL-Voice-Changer/actions/workflows/windows.yml">↓ Download Windows build</a>
+
 <a class="button secondary" href="./pocket-demo/">Separate Pocket TTS experiment</a>
 <a class="button secondary" href="https://github.com/tbenitz/IRL-Voice-Changer#readme">Setup guide ↗</a>
 </div>
-<p class="note"><strong>Important distinction:</strong> The fast AI microphone studio runs a trained neural streaming voice model, but is not compatible with standard RVC voice checkpoints. The separate original DSP microphone changer is real-time audio effects, not voice identity cloning. The older heavyweight RVC worker processes microphone chunks with persistent model sessions but is slower than real time in our CPU tests. The fast neural model has benchmarked faster than real time on a separate Linux runner; ChromeOS still needs local measurement. The separate RVC recording lab converts uploaded clips. These features are separate, labeled honestly, and neither sends microphone audio to an inference server. The Windows launcher supports native real-time neural engines.</p>
+<p class="note"><strong>Important distinction:</strong> The fast AI microphone studio runs a trained neural streaming voice model, but is not compatible with standard RVC voice checkpoints. The separate original DSP microphone changer is real-time audio effects, not voice identity cloning. The older heavyweight RVC worker processes microphone chunks with persistent model sessions but is slower than real time in our CPU tests. The fast neural model has benchmarked faster than real time on a separate Linux runner; ChromeOS still needs local measurement. The separate RVC recording lab converts uploaded clips. These features are separate, labeled honestly, and neither sends microphone audio to an inference server.</p>
 <section id="models" style="margin-top:70px">
-<div class="section-head"><div><div class="kicker">ENGINES</div><h2>Choose the right conversion method.</h2></div><p>Each card represents an upstream project executable or inference script. Model weights and voice references are not bundled.</p></div>
+<div class="section-head"><div><div class="kicker">ENGINES</div><h2>Choose the right conversion method.</h2></div><p>Some engines link to upstream demos; this project builds browser microphone conversion, local Pocket speech generation and experimental student model training.</p></div>
 <div class="grid">
 <div class="model highlight"><div class="num">01 / LOW LATENCY</div><h3>Beatrice v2</h3><p>Low-latency live conversion through VCClient. Hear hosted file conversion first.</p><small>Desktop real-time · online file demo</small><a href="./online-test/?model=beatrice">Try online ↗</a></div>
 <div class="model"><div class="num">02 / TRAINED VOICES</div><h3>RVC</h3><p>Real-time trained voice conversion using your compatible target checkpoint.</p><small>Desktop real-time · online file demo</small><a href="./online-test/?model=rvc">Try online ↗</a></div>
@@ -53,7 +53,7 @@ footer{border-top:1px solid var(--line);color:var(--sub);font-size:13px;padding:
 </div>
 </section>
 <section class="banner"><div><div class="kicker">LIVE CHROMEBOOK VOICE CHANGER</div><h2>Try your voice live—not TTS.</h2><p>Try the lightweight trained neural streaming model with a single 13.7 MB download. No transcription, no giant RVC pipeline, no original microphone passthrough.</p></div><div style="align-self:center"><a class="button" href="./live-vc/fast-voice.html">Open fast AI studio →</a></div></section>
-<div class="flow"><div class="step"><b>01 · Try the microphone</b><p>Hear a continuous transformed voice live through your speakers or headphones, with estimated delay and output meters.</p></div><div class="step"><b>02 · Download launcher</b><p>Get the Windows EXE from GitHub Actions, then install only the engines you want. Each model has its own dependency environment.</p></div><div class="step"><b>03 · Start live conversion</b><p>Run the upstream engine, import your voice and route output to speakers or a virtual audio cable.</p></div></div>
+<div class="flow"><div class="step"><b>01 · Try the microphone</b><p>Hear a continuous transformed voice live through your speakers or headphones, with estimated delay and output meters.</p></div><div class="step"><b>02 · Choose your neural model</b><p>Use the trained streaming voice presets, the saved Pocket experimental model, or a compatible custom ONNX file.</p></div><div class="step"><b>03 · Train or import a voice</b><p>The Pocket Studio can generate synthetic training speech, with a local experimental ONNX export. Real speaker matching is not yet verified.</p></div></div>
 </main>
 <footer>IRL Voice Changer · Integration by tbenitz · Third-party engines retain their own licenses · Use only voices you have consent to use</footer>
 </body></html>
