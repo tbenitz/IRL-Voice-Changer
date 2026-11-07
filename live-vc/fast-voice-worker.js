@@ -22,9 +22,16 @@ async function setupRuntime(){
  ort.env.logLevel="error";
  ortReady=true;
 }
-function resetHistory(count){
+function resetHistory(count,preserve=false){
  if(!Number.isInteger(count)||count<1024||count>16000)throw Error("History must be 1024–16000 samples");
- history=new Float32Array(count);
+ const replacement=new Float32Array(count);
+ // Live context adaptation must NOT wipe speech history or introduce a
+ // sudden zero-state edge just because a 1-second model window is too slow.
+ if(preserve){
+  const retained=Math.min(history.length,count);
+  replacement.set(history.subarray(history.length-retained),count-retained);
+ }
+ history=replacement;
 }
 async function loadModel(bytes){
  // Pocket's locally trained 4-layer ONNX can be ~66 KB. Reject empty data,
@@ -131,7 +138,10 @@ self.onmessage=async event=>{
   finally{busy=false}
  }else if(m.type==="config"){
   if(!busy){
-   try{resetHistory(Number(m.historySamples)||4096);send("stage",{text:"Neural history window updated"})}
+   try{
+    resetHistory(Number(m.historySamples)||4096,true);
+    send("config-applied",{historySamples:history.length});
+   }
    catch(e){send("error",{text:err(e)})}
   }
  }else if(m.type==="convert"){
