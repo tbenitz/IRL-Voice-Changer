@@ -148,12 +148,22 @@ def package_model(output, manifest, reference_info, run_dir, model_name, steps):
     pth = output / "checkpoints" / f"G_{steps}.pth"
     onnx = output / f"{model_name}.onnx"
     report = output / "model_report.json"
-    expected = (pth, onnx, report)
-    for file in expected:
-        if not file.is_file() or file.stat().st_size < 1024:
+    # Check small text reports for validity, not arbitrary file size.
+    # model_report.json is normally < 1 KiB; previously this rejected
+    # fully trained 13.72 MB ONNX models after successful export.
+    for file in (pth, onnx, report):
+        if not file.is_file() or file.stat().st_size == 0:
             raise RuntimeError(f"Missing finished trained artifact: {file}")
     if pth.stat().st_size < 2_000_000 or onnx.stat().st_size < 2_000_000:
         raise RuntimeError("Model artifacts are unexpectedly small. Refusing invalid ZIP.")
+    try:
+        saved_report = json.loads(report.read_text())
+    except (ValueError, UnicodeError) as exc:
+        raise RuntimeError(f"Invalid ONNX report JSON: {report}") from exc
+    if (saved_report.get("file") != onnx.name or
+            saved_report.get("steps") != steps):
+        raise RuntimeError("ONNX report references a different model or training step.")
+
     import onnx as onnx_lib
     import onnxruntime as ort
     onnx_lib.checker.check_model(str(onnx))
