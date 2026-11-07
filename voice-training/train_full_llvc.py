@@ -221,7 +221,8 @@ def main():
                    help="Export saved G_<steps>.pth to ONNX without retraining")
     a = p.parse_args()
     import torch
-    require(torch.cuda.is_available(), "Full LLVC distillation requires a CUDA GPU; no CPU-only pretend run")
+    if not a.export_only:
+        require(torch.cuda.is_available(), "Full LLVC training requires a CUDA GPU")
     require(500 <= a.steps <= 50000 and a.steps % 500 == 0,
             "Use 500–50000 real training updates in multiples of 500")
     require(1 <= a.batch <= 16, "Batch size must be 1–16")
