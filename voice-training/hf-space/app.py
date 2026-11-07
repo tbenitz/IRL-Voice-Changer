@@ -10,8 +10,11 @@ import uuid
 import gradio as gr
 
 ROOT = Path("/app")
-JOBS = Path("/data/voice-jobs")
-CACHE = Path("/data/voice-cache")
+# /data is not writable unless an appropriate storage volume is mounted.
+# Use the pre-created user-owned directory, even on Spaces without /data.
+WORKSPACE = Path(os.environ.get("VOICE_WORKSPACE", "/home/user/voice-data"))
+JOBS = WORKSPACE / "voice-jobs"
+CACHE = WORKSPACE / "voice-cache"
 
 
 def create_voice(uploaded_audio, steps):
@@ -20,6 +23,15 @@ def create_voice(uploaded_audio, steps):
         return
     if not os.path.isfile(uploaded_audio):
         yield "Uploaded file no longer exists. Try uploading again.", None
+        return
+    # Test CUDA before starting a long job, never launch GPU training on CPU.
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            yield "NO NVIDIA GPU DETECTED. Assign a T4 GPU in Space Settings → Hardware, then restart.", None
+            return
+    except Exception as exc:
+        yield f"GPU preflight failed: {exc}", None
         return
     job_dir = JOBS / uuid.uuid4().hex[:12]
     job_dir.mkdir(parents=True, exist_ok=True)
