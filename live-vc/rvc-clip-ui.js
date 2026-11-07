@@ -115,7 +115,7 @@
       status("Decoding first three seconds of speech for a genuine RVC voice comparison…");
       const pcm=await pcm16k(file);
       if(state.cancelled)return;
-      const worker=new Worker("./rvc-stream-worker.js?v=20261106-features-v3");
+      const worker=new Worker("./rvc-stream-worker.js?v=20261106-rvc-contract-v4");
       state.worker=worker;
       status("Initializing ContentVec, RMVPE and voice checkpoint in the local RVC worker…");
       const [voice,contentVec,rmvpe]=[
