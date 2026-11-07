@@ -4,6 +4,7 @@
  */
 const assert=require("node:assert/strict"),fs=require("node:fs"),path=require("node:path");
 const tf=require("@tensorflow/tfjs"),ort=require("onnxruntime-web");
+const vm=require("node:vm");
 const data=require("../pocket-demo/studio/trainer-data.js");
 const exporter=require("../pocket-demo/studio/trainer-onnx.js");
 require("../pocket-demo/studio/trainer-webgpu.js");
@@ -54,5 +55,33 @@ function signal(n){const x=new Float32Array(n);for(let i=0;i<n;i++)x[i]=.15*Math
  let maximum=0;for(let i=0;i<pcm.length;i++)maximum=Math.max(maximum,Math.abs(reference[i]-actual[i]));
  assert(maximum<.035,"ONNX exported model does not match trained TFJS model. diff="+maximum);
  console.log("PASS: real TFJS weights trained, exported to runnable ONNX Conv1D and confirmed against TFJS output; max diff="+maximum);
+ // Complete real-model smoke test: feed the ACTUAL small learned ONNX through
+ // the same live voice worker that processes microphone audio on Chromebook.
+ // This catches arbitrary file-size guards that reject correct trained models.
+ const exportedBytes=await onnx.arrayBuffer();
+ assert(exportedBytes.byteLength<100000,
+        "Expected regression fixture to exercise a sub-100 KB Pocket student");
+ const events=[];
+ const runtime={
+  ArrayBuffer,Float32Array,Number,Math,Promise,performance,console,
+  self:{postMessage(msg){events.push(msg)},onmessage:null}
+ };
+ runtime.importScripts=()=>{runtime.ort=ort};
+ vm.runInNewContext(fs.readFileSync(
+  path.join(__dirname,"..","live-vc","fast-voice-worker.js"),"utf8"),runtime);
+ await runtime.self.onmessage({data:{
+  type:"init",model:exportedBytes,historySamples:2048
+ }});
+ const ready=events.find(e=>e.type==="ready");
+ if(!ready)throw Error("Real trained ONNX failed Fast Neural worker init: "+
+  JSON.stringify(events.filter(e=>e.type==="error")));
+ await runtime.self.onmessage({data:{type:"convert",pcm}});
+ const converted=events.find(e=>e.type==="audio");
+ if(!converted)throw Error("Real trained ONNX failed Fast Neural mic conversion: "+
+  JSON.stringify(events.filter(e=>e.type==="error")));
+ assert.equal(converted.pcm.length,2048);
+ assert(converted.pcm.every(Number.isFinite));
+ console.log("PASS: "+exportedBytes.byteLength+"-byte truly trained ONNX initialized and converted actual PCM in live Fast Neural worker; RTF="+converted.rtf.toFixed(3));
+ await runtime.self.onmessage({data:{type:"stop"}});
  await session.release();tfPrediction.dispose();x.dispose();y.dispose();m.dispose();optim.dispose();
 })().catch(e=>{console.error(e);process.exitCode=1});
