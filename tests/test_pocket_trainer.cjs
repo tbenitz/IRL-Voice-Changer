@@ -55,7 +55,9 @@ function signal(n){const x=new Float32Array(n);for(let i=0;i<n;i++)x[i]=.15*Math
  let maximum=0;for(let i=0;i<pcm.length;i++)maximum=Math.max(maximum,Math.abs(reference[i]-actual[i]));
  assert(maximum<.035,"ONNX exported model does not match trained TFJS model. diff="+maximum);
  console.log("PASS: real TFJS weights trained, exported to runnable ONNX Conv1D and confirmed against TFJS output; max diff="+maximum);
- // Complete real-model smoke test: feed the ACTUAL small learned ONNX through
+ // Low-level ONNX interoperability smoke test, with voice-quality guard
+ // disabled for this test ONLY. A valid graph can still be a BAD voice clone.
+ // Feed the ACTUAL small learned ONNX through
  // the same live voice worker that processes microphone audio on Chromebook.
  // This catches arbitrary file-size guards that reject correct trained models.
  const exportedBytes=await onnx.arrayBuffer();
@@ -70,7 +72,7 @@ function signal(n){const x=new Float32Array(n);for(let i=0;i<n;i++)x[i]=.15*Math
  vm.runInNewContext(fs.readFileSync(
   path.join(__dirname,"..","live-vc","fast-voice-worker.js"),"utf8"),runtime);
  await runtime.self.onmessage({data:{
-  type:"init",model:exportedBytes,historySamples:2048
+  type:"init",model:exportedBytes,historySamples:2048,requireVoiceChange:false
  }});
  const ready=events.find(e=>e.type==="ready");
  if(!ready)throw Error("Real trained ONNX failed Fast Neural worker init: "+
