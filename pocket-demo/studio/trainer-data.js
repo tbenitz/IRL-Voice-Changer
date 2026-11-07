@@ -8,7 +8,7 @@ const SR=16000, DB="pocket-streaming-student-v1";
 const STORE="pairs",META="meta";
 function openDB(){
  return new Promise((ok,fail)=>{
-  const r=indexedDB.open(DB,1);
+  const r=indexedDB.open(DB,2);
   r.onupgradeneeded=()=>{
    if(!r.result.objectStoreNames.contains(STORE))r.result.createObjectStore(STORE,{keyPath:"id"});
    if(!r.result.objectStoreNames.contains(META))r.result.createObjectStore(META,{keyPath:"key"});
