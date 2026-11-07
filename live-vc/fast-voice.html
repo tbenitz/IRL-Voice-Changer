@@ -42,7 +42,7 @@ progress{width:100%;height:13px;accent-color:var(--mint)}
 </style>
 </head>
 <body>
-<header><strong>◉ IRL <span>VOICE CHANGER</span></strong><nav><a href="../">Home</a><a href="./">Original live DSP + RVC</a><a href="./#rvc-live">Heavy RVC</a></nav></header>
+<header><strong>◉ IRL <span>VOICE CHANGER</span></strong><nav><a href="../">Home</a><a href="./">Original live DSP + RVC</a><a href="./#rvc-live">Heavy RVC</a><a href="../pocket-demo/studio/#pocket-trainer">Train custom ONNX</a></nav></header>
 <main>
 <span class="eyebrow">Fast neural voice conversion • ChromeOS • local processing</span>
 <h1>Live AI voice.<br><em>Without giant RVC models.</em></h1>
@@ -55,7 +55,7 @@ progress{width:100%;height:13px;accent-color:var(--mint)}
       <option value="hfg">Female — streaming LLVC student (13.7 MB)</option>
       <option value="old_hq">Female — alternate HQ checkpoint (13.7 MB)</option>
       <option value="old">Female — original checkpoint (13.7 MB)</option>
-      <option value="saved">My saved trained ONNX (from Pocket Studio)</option>
+      <option value="saved">My saved experimental ONNX (from Pocket Studio)</option>
       <option value="custom">Upload my own compatible causal 16kHz ONNX</option>
     </select>
     <small>Built-in models are real trained speaker voices. Saved experimental Pocket-adapter model similarity is unverified. Custom models must expose <code>audio_in → audio_out</code>; ordinary RVC .onnx voice files are NOT compatible here.</small>
