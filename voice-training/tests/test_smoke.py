@@ -113,6 +113,44 @@ class PipelineSmoke(unittest.TestCase):
         self.assertTrue(any(re.search(p, "LLVC training 250/500 steps")
                             for p in patterns))
 
+    def test_completed_model_shortcuts_gpu_and_zip(self):
+        """Existing PTH+ONNX must be returned without starting any paid GPU work."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            job = root / "voice-job"
+            out = job / "llvc-trained"
+            checkpoints = out / "checkpoints"
+            checkpoints.mkdir(parents=True)
+            (checkpoints / "G_500.pth").write_bytes(b"p" * 2_000_001)
+            (out / "example.onnx").write_bytes(b"o" * 2_000_001)
+            (out / "model_report.json").write_text(
+                json.dumps({"file": "example.onnx", "steps": 500}))
+            (job / "dataset").mkdir()
+            (job / "dataset" / "manifest.json").write_text(
+                json.dumps({"train": 360, "val": 32, "dev": 8}))
+            (job / "input.wav").write_bytes(b"dummy")
+            for folder in ("repo", "seed", "llvc"):
+                (root / folder).mkdir()
+            old_argv = sys.argv
+            try:
+                sys.argv = [
+                    "one_click_pipeline.py", "--audio", str(job / "input.wav"),
+                    "--run-dir", str(job), "--repo", str(root / "repo"),
+                    "--seed-vc", str(root / "seed"), "--llvc", str(root / "llvc"),
+                    "--steps", "500", "--skip-zip",
+                ]
+                spec = importlib.util.spec_from_file_location(
+                    "pipeline_no_zip", ROOT / "one_click_pipeline.py"
+                )
+                pipeline = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(pipeline)
+                pipeline.main()
+            finally:
+                sys.argv = old_argv
+            self.assertFalse(list(job.glob("*.zip")))
+            self.assertTrue((checkpoints / "G_500.pth").exists())
+            self.assertTrue((out / "example.onnx").exists())
+
     def test_direct_pth_download_available_before_onnx(self):
         available = get_function(
             ROOT / "hf-space" / "app.py", "available_model_files",
