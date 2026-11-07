@@ -58,14 +58,19 @@ function pitch(pcm){
  for(let start=0;start<src.length;start+=chunkSize){
   const part=src.subarray(start,Math.min(start+chunkSize,src.length));
   if(part.length<512)break;
-  const data=new Float32Array(historySize+part.length);
-  data.set(history);data.set(part,historySize);
+  // The live browser AudioWorklet always sends a fixed 8192-frame chunk.
+  // Its ONNX model uses strided layers: an unaligned final partial chunk can
+  // return fewer samples than input. Pad test's last partial chunk to 8192.
+  const padded=new Float32Array(chunkSize);padded.set(part);
+  const data=new Float32Array(historySize+chunkSize);
+  data.set(history);data.set(padded,historySize);
   const t=performance.now();
   const result=await sess.run({audio_in:new ort.Tensor("float32",data,[1,1,data.length])});
   totalMs+=performance.now()-t;chunks++;
   const o=result.audio_out?.data;
-  if(!o||o.length<data.length)throw Error("ONNX returned invalid output");
-  const tail=o.subarray(o.length-part.length);
+  if(!o||o.length<data.length)throw Error("ONNX returned invalid output: input "+data.length+
+    ", output "+(o?.length??"missing")+", last partial chunk "+part.length);
+  const tail=o.subarray(o.length-chunkSize,o.length-chunkSize+part.length);
   output.set(tail,start);
   if(part.length>=historySize)history.set(part.subarray(part.length-historySize));
   else{history.copyWithin(0,part.length);history.set(part,historySize-part.length)}
