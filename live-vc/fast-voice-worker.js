@@ -4,11 +4,14 @@
    Browser WASM inference; main thread owns capture/output and keeps voice muted on errors.
  */
 "use strict";
+const WORKER_BUILD="20261106-cacheguard-v5";
 const ORT_DIST="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/";
 let ortReady=false, session=null, history=new Float32Array(4096), busy=false, initialized=false;
 let sourceRate=16000;
 function send(type,details={},transfer=[]){self.postMessage({type,...details},transfer)}
 function err(e){return e?.stack||e?.message||String(e)}
+// Handshake proves the exact compiled worker running the audio pipeline.
+send("build",{build:WORKER_BUILD});
 async function setupRuntime(){
  if(ortReady)return;
  importScripts(ORT_DIST+"ort.min.js");
