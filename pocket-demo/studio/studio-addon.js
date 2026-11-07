@@ -113,6 +113,7 @@
   const generate = app.generate.bind(app);
   app.generate = async (...args) => {
     if (!app.isWorkerReady || app.isGenerating || !app.el.textInput.value.trim()) return;
+    if (app.silentBatchMode) return generate(...args); // No preview or MP3; only dataset PCM
     message("Generating a real Pocket TTS preview locally...");
     const output = await generate(...args);
     update();
