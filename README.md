@@ -1,5 +1,18 @@
 # IRL Voice Changer
 
+## Custom ONNX correction — why the old 65 KB student is NOT a voice clone
+
+**The existing 65–70 KB Pocket ONNX is only a four-layer waveform adapter, not a speaker-trained version of the working 13 MB models.** Its 31-tap convolutions provide only ~5.7 ms of raw speech context. The old dataset paired *independent text-to-speech utterances*, stretching their total lengths but not aligning phonemes or waveform phase. Worse, the old loss penalized changing the input voice. A valid ONNX graph and a changed waveform do not mean the custom target voice was learned.
+
+The [actual LLVC approach](https://github.com/ultrapg/hevoicechanger) used **hundreds of source speech clips passed through an already-trained RVC voice-specific teacher**, producing synchronized original/converted examples, then a substantially larger causal model with thousands of training updates. No client-side toggle can turn independently synthesized Pocket audio or a 6-ms-receptive-field student into the same trained voice model. Simply padding the 65 KB ONNX to 13 MB would do nothing.
+
+**What's corrected in this repo:**
+- The previously working pretrained checkpoints and 512-ms microphone chunk / 256-ms history defaults are preserved. For manually chosen 500/1,000-ms history, the browser now tries a shorter context without clearing audio history if inference is too slow; on sustained overload it mutes and reports the error instead of silently replacing captured speech chunks.
+- Old student ONNX files trained from independent Pocket TTS renders are **refused as finished custom voice models**; existing saved files and saved Pocket voices are not deleted.
+- Pocket Studio now has an advanced importer for **genuine original vs. custom-trained-teacher-converted WAVs from the same original speech**, named `001_original.wav` / `001_converted.wav`. Standard 16/40/48-kHz WAV is decoded and resampled locally to 16-kHz mono without Python, and wrong durations, silence and near-identical pairs are rejected. Independent Pocket TTS pairs are **not accepted for model training**.
+- The ONNX waveform adapter training remains **research-only and too small to promise a custom speaker match**, even after real teacher data is imported. A proper full-size causal model, stronger spectral/adversarial training, and an already-trained target voice-conversion teacher or an actual zero-shot VC engine are still needed to deliver the requested quality. **This task is not completed merely because the tests pass.**
+
+
 
 ## Pocket custom voice → synthetic speech dataset → local experimental student ONNX
 
