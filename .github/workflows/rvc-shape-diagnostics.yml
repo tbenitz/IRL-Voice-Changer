@@ -1,0 +1,63 @@
+name: Probe real RVC ONNX dimensions
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/rvc-shape-diagnostics.yml"
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Install CPU ONNX inference runtime
+        run: |
+          python -m pip install --quiet --disable-pip-version-check "onnxruntime==1.23.2" "numpy<3"
+      - name: Download exact ContentVec and built-in voice ONNX models
+        run: |
+          set -euo pipefail
+          curl -fLSs --retry 3 --max-time 360 -o /tmp/contentvec.onnx \
+            "https://huggingface.co/ampixa/rvc-browser-runtime/resolve/main/contentvec.fp16.onnx"
+          curl -fLSs --retry 3 --max-time 360 -o /tmp/voice.onnx \
+            "https://huggingface.co/ampixa/nepali-rvc-voices-v1/resolve/45908909e0e1b01ae45c8254ef939045d221b510/browser/ne_rvc_m01.512.fp16.onnx"
+          wc -c /tmp/contentvec.onnx /tmp/voice.onnx
+          test "$(wc -c < /tmp/contentvec.onnx)" -eq 189437475
+      - name: Run actual ContentVec ONNX and print exact output axes
+        run: |
+          python - <<'PY'
+          import numpy as np
+          import onnxruntime as ort
+          print("onnxruntime:", ort.__version__, flush=True)
+          opt=ort.SessionOptions()
+          opt.intra_op_num_threads=1
+          opt.inter_op_num_threads=1
+          cv=ort.InferenceSession("/tmp/contentvec.onnx",sess_options=opt,providers=["CPUExecutionProvider"])
+          print("CONTENTVEC INPUTS",[(x.name,x.shape,x.type) for x in cv.get_inputs()],flush=True)
+          print("CONTENTVEC OUTPUTS",[(x.name,x.shape,x.type) for x in cv.get_outputs()],flush=True)
+          voice=ort.InferenceSession("/tmp/voice.onnx",sess_options=opt,providers=["CPUExecutionProvider"])
+          print("RVC GENERATOR INPUTS",[(x.name,x.shape,x.type) for x in voice.get_inputs()],flush=True)
+          print("RVC GENERATOR OUTPUTS",[(x.name,x.shape,x.type) for x in voice.get_outputs()],flush=True)
+          n=16000
+          audio=(np.sin(np.arange(n,dtype=np.float32)*np.float32(2*np.pi*220/16000))*.12).astype("float32")
+          feeds={}
+          for x in cv.get_inputs():
+              if x.name in ("source","audio","input","waveform"):
+                  feeds[x.name]=audio.reshape((1,1,n) if len(x.shape)==3 else (1,n))
+              elif x.name=="padding_mask":
+                  feeds[x.name]=np.zeros([1,n],dtype=bool)
+              elif x.name=="output_layer":
+                  feeds[x.name]=np.asarray([12],dtype="int64")
+              else:
+                  raise Exception("Unknown ContentVec input: "+x.name)
+          result=cv.run(None, feeds)
+          for desc,arr in zip(cv.get_outputs(), result):
+              print("CONTENTVEC ACTUAL",desc.name,"shape=",arr.shape,"dtype=",arr.dtype,
+                  "range=",np.nanmin(arr),np.nanmax(arr),flush=True)
+          expected=next((i.shape[-1] for i in voice.get_inputs() if i.name=="phone"),None)
+          assert expected in (768,256),f"Unexpected generator phone dimension {expected}"
+          matching=[(desc.name,arr.shape) for desc,arr in zip(cv.get_outputs(),result)
+                    if arr.ndim==3 and expected in arr.shape[1:]]
+          print("MATCHED",matching,"EXPECTED PHONE WIDTH",expected,flush=True)
+          assert matching,"ContentVec graph does not output the required generator feature width"
+          PY
