@@ -6,7 +6,7 @@
 "use strict";
 const $=id=>document.getElementById(id);
 const MODEL_ROOT="https://raw.githubusercontent.com/ultrapg/hevoicechanger/main/models/";
-const FAST_BUILD="20261107-neural-audible-v10";
+const FAST_BUILD="20261107-output-audit-v8";
 const voices={
  hfg:{name:"female_voice_hfg_new.onnx",bytes:13756183},
  old_hq:{name:"female_voice_old_hq.onnx",bytes:13718163},
@@ -14,9 +14,9 @@ const voices={
 };
 const app={token:0,loading:false,active:false,worker:null,stream:null,ctx:null,
  source:null,capture:null,gain:null,sources:new Set(),abort:null,inFlight:false,pending:null,
- nextPlayTime:0,drops:0,chunkFrames:8192,historySamples:16000,lastCapture:0,
+ nextPlayTime:0,drops:0,chunkFrames:2048,historySamples:4096,lastCapture:0,
  workerBlobUrl:null,verifiedWorkerBuild:false,
- audit:null,inFlightSource:null,auditUrls:[],autoLevelFactor:1};
+ audit:null,inFlightSource:null,auditUrls:[]};
 const CACHE="irl-fast-neural-voice-models", STORE="weights";
 async function loadVerifiedWorker(){
  // Fetch tiny worker (not voice weights) using no browser/CDN cache.
@@ -191,7 +191,7 @@ async function stop(message){
  try{await app.ctx?.close()}catch(_){}
  Object.assign(app,{abort:null,worker:null,ctx:null,stream:null,source:null,capture:null,
   gain:null,inFlight:false,pending:null,nextPlayTime:0,lastCapture:0,
-  inFlightSource:null,autoLevelFactor:1,
+  inFlightSource:null,
   workerBlobUrl:null,verifiedWorkerBuild:false});
  $("download").hidden=true;
  toggle();badge("OFF · MUTED");
@@ -281,31 +281,15 @@ function play(d){
  const rtf=Number(d.rtf)||0,elapsed=Number(d.inferenceMs)||0;
  $("rtf").textContent=rtf.toFixed(2)+"×";
  $("inference").textContent=Math.round(elapsed);
- // Use ONLY measured input/output RMS to adjust the gain applied to the
- // already-inferred neural speech. Never mix in source microphone audio.
- const rawIn=Number(d.inputRms),rawOut=Number(d.outputRms);
- if($("auto-level").checked&&Number.isFinite(rawIn)&&Number.isFinite(rawOut)
-    &&rawIn>.015&&rawOut>.004){
-  const desired=Math.max(.7,Math.min(3,rawIn/rawOut));
-  app.autoLevelFactor=.75*app.autoLevelFactor+.25*desired;
- }else if(!$("auto-level").checked){
-  app.autoLevelFactor=1;
- }
- app.gain.gain.setTargetAtTime(
-  (Number($("volume").value)/100)*app.autoLevelFactor,ctx.currentTime,.12);
- $("auto-level-status").textContent=$("auto-level").checked
-  ?"Neural playback normalization: "+app.autoLevelFactor.toFixed(2)+
-    "× based on actual ONNX output level. This adjusts volume ONLY."
-  :"Auto-level disabled: pure ONNX volume controlled by output slider.";
  const voiced=Number(d.inputRms)>.012,correlation=Number(d.correlation);
  const delta=Number(d.changeRatio);
  $("wave-change").textContent=voiced&&Number.isFinite(delta)?(delta*100).toFixed(1)+"%":"—";
  $("wave-corr").textContent=voiced&&Number.isFinite(correlation)?correlation.toFixed(4):"—";
  $("voice-change-note").textContent=!voiced
-  ?"Speaker identity NOT VERIFIED. Speak normally to measure signal differences and use the A/B recording to judge sound."
+  ?"Speak naturally to measure how much the ONNX output differs from your microphone."
   :correlation>.97
-   ?"Speaker identity NOT VERIFIED. ONNX output tracks the microphone closely; little audible speaker change may be occurring."
-   :"Speaker identity NOT VERIFIED. Waveform differences could be filtering, phase changes or distortion. Listen to the A/B recording for audible speaker change.";
+   ?"Warning: ONNX audio still tracks the original waveform closely. This may NOT sound like another speaker."
+   :"ONNX output differs from the input waveform. Compare the A/B recordings to judge audible timbre; this is NOT proof of speaker identity.";
  $("performance-note").textContent=rtf<=.7?"Running faster than real time with useful headroom.":
   rtf<1?"Near the processing limit; try a larger chunk if audio skips.":
   "This setting is slower than real-time on your device. Try a shorter history or larger chunk.";
@@ -339,10 +323,10 @@ function play(d){
  app.nextPlayTime=scheduled+buf.duration;
  meters("output-meter",pcm);
  $("lag").textContent=Math.round(actualDelay+(scheduled-ctx.currentTime)*1000);
- info("Actual ONNX PCM"+(d.postPitchSemitones?" with "+(d.postPitchSemitones>0?"+":"")+d.postPitchSemitones+" st post-neural pitch DSP":" (pure model)")+" scheduled: "+Math.round(elapsed)+" ms inference for "+
+ info("ONNX-generated PCM scheduled: "+Math.round(elapsed)+" ms inference for "+
   Math.round(app.chunkFrames/16)+" ms captured speech. Waveform correlation "+
   (Number.isFinite(correlation)?correlation.toFixed(3):"unknown")+
-  "; RTF "+rtf.toFixed(2)+". A numerical waveform difference is NOT speaker-conversion proof. Listen to the A/B audio.");
+  "; RTF "+rtf.toFixed(2)+". Listen to the separate A/B recording to verify timbre.");
 }
 function eventFromWorker(e,token){
  if(token!==app.token)return;
@@ -403,7 +387,7 @@ async function activateMic(token){
  app.loading=false;app.active=true;
  capture.port.postMessage({type:"enable",enabled:true});
  for(const t of stream.getTracks())t.onended=()=>{void stop("Microphone disconnected.")};
- toggle();badge("ONNX ACTIVE · VOICE UNVERIFIED", "live");
+ toggle();badge("LIVE NEURAL", "live");
  info(["saved","custom"].includes($("voice").value)
   ? "Experimental ONNX loaded with voice-change protection: nearly unchanged microphone audio will be muted, not mistaken for a converted voice."
   : "Running pre-trained 13.7 MB voice conversion locally at 16 kHz. Headphones recommended.");
@@ -413,9 +397,9 @@ async function start(){
  if(!window.isSecureContext||!window.AudioWorkletNode||!navigator.mediaDevices?.getUserMedia){
   info("Requires Chrome over HTTPS with microphone and AudioWorklet permission.",true);return;
  }
- app.loading=true;app.drops=0;app.inFlight=false;app.pending=null;app.autoLevelFactor=1;
+ app.loading=true;app.drops=0;app.inFlight=false;app.pending=null;
  app.chunkFrames=Number($("chunk").value)||8192;
- app.historySamples=Number($("history").value)||16000;
+ app.historySamples=Number($("history").value)||4096;
  $("drops").textContent="0";$("lag").textContent="—";$("inference").textContent="—";$("rtf").textContent="—";
  $("wave-change").textContent="—";$("wave-corr").textContent="—";
  $("voice-change-note").textContent="Speak after model initialization to measure the true ONNX output versus input. This is not a speaker identity score.";
@@ -435,7 +419,7 @@ async function start(){
   worker.onmessage=e=>eventFromWorker(e,token);
   worker.onerror=e=>{if(token===app.token)void stop("Neural worker crashed: "+(e.message||"unknown"))};
   worker.postMessage({type:"init",model:weights,historySamples:app.historySamples,
-    pitchSemitones:Number($("pitch-finish").value),requireVoiceChange:true},[weights]);
+    requireVoiceChange:true},[weights]);
  }catch(e){
   if(token===app.token)await stop("Could not initialize the real neural model: "+(e?.message||e));
  }
@@ -451,36 +435,11 @@ function describeVoiceSelection(){
  $("voice-mode-detail").textContent=details;
  $("download-status").textContent=details;
 }
-$("voice").addEventListener("change",()=>{
- $("pitch-finish").value=["saved","custom"].includes($("voice").value)?"0":"6";
- updatePitchLabel();
- describeVoiceSelection();
-});
+$("voice").addEventListener("change",describeVoiceSelection);
 describeVoiceSelection();
-function updatePitchLabel(){
- const value=Number($("pitch-finish").value);
- $("pitch-finish-label").textContent=(value>0?"+":"")+value+" semitones";
-}
-$("pitch-finish").addEventListener("input",()=>{
- updatePitchLabel();
- if(app.active&&app.worker){
-  app.worker.postMessage({type:"config",pitchSemitones:Number($("pitch-finish").value)});
-  info("Optional post-ONNX pitch DSP changed. Shifter needs about 150 ms to refill. Mic still cannot bypass neural inference.");
- }
-});
-updatePitchLabel();
 $("volume").addEventListener("input",()=>{
  $("volume-value").textContent=$("volume").value+"%";
- if(app.gain&&app.ctx)app.gain.gain.setTargetAtTime(
-  Number($("volume").value)/100*app.autoLevelFactor,app.ctx.currentTime,.015);
-});
-$("auto-level").addEventListener("change",()=>{
- if(!$("auto-level").checked)app.autoLevelFactor=1;
- $("auto-level-status").textContent=$("auto-level").checked
-  ?"Auto playback loudness matching enabled; only model output is amplified."
-  :"Auto loudness matching disabled. No original microphone audio will be played.";
- if(app.gain&&app.ctx)app.gain.gain.setTargetAtTime(
-  Number($("volume").value)/100*app.autoLevelFactor,app.ctx.currentTime,.10);
+ if(app.gain&&app.ctx)app.gain.gain.setTargetAtTime(Number($("volume").value)/100,app.ctx.currentTime,.015);
 });
 $("start").addEventListener("click",()=>{void start()});
 $("audit-start").addEventListener("click",()=>{
