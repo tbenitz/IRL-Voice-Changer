@@ -55,7 +55,9 @@ def setup(upstream, output, dataset, steps, batch):
     config["fp16_run"] = True
     config["optim"]["lr"] = 2e-5  # Gentle fine-tuning, do not overwrite pretrained timbre with 5e-4.
     # Save intermediate checkpoints so GPU interruptions do not erase the run.
-    config["checkpoint_interval"] = min(500, steps)
+    # Shorter runs save more frequent intermediate recovery points; longer
+    # 5000+ runs retain 500-step intervals to avoid excessive disk writes.
+    config["checkpoint_interval"] = max(100, min(500, (steps // 500) * 100))
     config["log_interval"] = 100  # Needed: upstream nests checkpoint saving inside this log block.
     config["max_steps"] = steps
     config["test_dir"] = str(upstream / "test_wavs")
@@ -264,10 +266,13 @@ def main():
                 f"Cannot export: checkpoint not present: {expected}")
         print("Exporting saved checkpoint without repeating training:", expected, flush=True)
     else:
-        setup(upstream, output, a.dataset.resolve(), a.steps, a.batch)
-        if expected.is_file():
-            print("Requested checkpoint already exists; skipping training:", expected, flush=True)
+        if expected.is_file() and (output / "config.json").is_file():
+            # Critical when GPU time is billed: do not redownload weights,
+            # rewrite config, or retrain an already completed checkpoint.
+            print("Requested checkpoint already exists; skipping setup and training:",
+                  expected, flush=True)
         else:
+            setup(upstream, output, a.dataset.resolve(), a.steps, a.batch)
             train(upstream, output)
     export(upstream, output, a.steps, a.name)
 
