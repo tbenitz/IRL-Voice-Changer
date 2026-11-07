@@ -248,6 +248,12 @@ async function encodeClonedPCM(pcm,key){
 }
 async function prepareTarget(){
  const choice=$("trainer-target").value;
+ if(choice.startsWith("builtin:")){
+  const voice=choice.slice("builtin:".length);
+  if(!app.builtinVoices.includes(voice))throw Error("Pocket built-in target voice not available");
+  targetPCM=null;loadedCustomKey=null;
+  return "builtin:"+voice; // Built-in voices need no uploaded or saved reference.
+ }
  if(choice.startsWith("saved:")){
   const record=selectedSaved(choice);
   if(!record||!record.pcm)throw Error("Saved target voice was not found. Click Refresh My Voices.");
@@ -268,6 +274,9 @@ async function prepareTarget(){
 async function selectSpeechVoice(voice){
  if(voice==="target"){
   const key=$("trainer-target").value;
+  if(key.startsWith("builtin:")){
+   await selectSpeechVoice(key.slice("builtin:".length));return;
+  }
   if(loadedCustomKey!==key){
    if(!targetPCM)throw Error("Target voice was not prepared");
    await encodeClonedPCM(targetPCM,key);
@@ -322,10 +331,6 @@ function refreshVoices(){
  const source=$("trainer-source"),target=$("trainer-target");
  const prevSource=source.value,prevTarget=target.value;
  source.replaceChildren();target.replaceChildren();
- const targetCurrent=document.createElement("option");
- targetCurrent.value="current";
- targetCurrent.textContent="Current uploaded/recorded Pocket clone (no saved name)";
- target.append(targetCurrent);
  const available=document.createElement("optgroup");available.label="Saved custom voices (your My Voices library)";
  for(const record of savedVoices){
   const key="saved:"+record.id;
@@ -334,6 +339,18 @@ function refreshVoices(){
   available.append(targetOption);
  }
  target.append(available);
+ const targetBuiltins=document.createElement("optgroup");
+ targetBuiltins.label="Built-in Pocket voices (no upload required)";
+ for(const id of list){
+  const option=document.createElement("option");option.value="builtin:"+id;
+  option.textContent=id+" • built-in ready to synthesize";
+  targetBuiltins.append(option);
+ }
+ target.append(targetBuiltins);
+ const targetCurrent=document.createElement("option");
+ targetCurrent.value="current";
+ targetCurrent.textContent="Current uploaded/recorded Pocket reference";
+ target.append(targetCurrent);
  const sourceBuiltins=document.createElement("optgroup");
  sourceBuiltins.label="Built-in Pocket input speakers";
  for(const id of list){
@@ -350,10 +367,13 @@ function refreshVoices(){
   sourceSaved.append(option);
  }
  source.append(sourceSaved);
- const targetKeys=["current",...savedVoices.map(v=>"saved:"+v.id)];
- target.value=targetKeys.includes(prevTarget)?prevTarget:
+ const targetKeys=["current",...savedVoices.map(v=>"saved:"+v.id),...list.map(v=>"builtin:"+v)];
+ target.value=targetKeys.includes(prevTarget)&&prevTarget!=="current" ?prevTarget:
   (app.activeSavedVoiceId!=null&&targetKeys.includes("saved:"+app.activeSavedVoiceId)
-    ?"saved:"+app.activeSavedVoiceId:targetKeys[0]);
+    ?"saved:"+app.activeSavedVoiceId:
+    (app.activeVoice&&app.builtinVoices.includes(app.activeVoice)
+      ?"builtin:"+app.activeVoice:
+      (savedVoices.length?"saved:"+savedVoices[0].id:(list.length?"builtin:"+list[0]:"current"))));
  const sourceKeys=[...list,...savedVoices.map(v=>"saved:"+v.id)];
  source.value=sourceKeys.includes(prevSource)?prevSource:(list.includes("alba")?"alba":sourceKeys[0]||"");
 }
@@ -381,7 +401,8 @@ async function generateDataset(){
  if(paired&&!app.builtinVoices.includes(source)&&!(source?.startsWith("saved:")&&selectedSaved(source))){
   notice("Choose a built-in or saved source voice for experimental two-voice pairs.",true);return;
  }
- if(paired&&$("trainer-target").value===source){
+ if(paired&&($("trainer-target").value===source||
+   $("trainer-target").value==="builtin:"+source)){
   notice("Choose different target and source speakers.",true);return;
  }
  if(app.isGenerating||app.isVoiceEncoding){notice("Finish your current Pocket operation first.",true);return}
