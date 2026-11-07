@@ -98,7 +98,9 @@ def main():
         p.error("Teacher steps must be 4–50")
     if not Path(args.reference).is_file():
         p.error("Speaker reference audio missing")
-    os.chdir(args.seed_vc)
+    seed_dir = Path(args.seed_vc).resolve()
+    sys.path.insert(0, str(seed_dir))
+    os.chdir(seed_dir)
     import torch
     if not torch.cuda.is_available():
         raise RuntimeError("Teacher synthesis requires GPU; this job will not pretend CPU training succeeded.")
