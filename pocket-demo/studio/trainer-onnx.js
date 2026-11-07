@@ -52,11 +52,11 @@ async function exportCausalOnnx(tfModel,metadata={}){
  }
  const g=[txt(2,"pocket-streaming-timbre-experiment")];
  const graphNodes=[
-  node("Conv",["audio_in","W1","B1"],["c1"],(weights[0].kernel.k-1)*1/2,1),
+  node("Conv",["audio_in","W1","B1"],["c1"],(weights[0].kernel.k-1)/2,1),
   node("Tanh",["c1"],["a1"]),
-  node("Conv",["a1","W2","B2"],["c2"],(weights[1].kernel.k-1)*4/2,4),
+  node("Conv",["a1","W2","B2"],["c2"],(weights[1].kernel.k-1)/2,1),
   node("Tanh",["c2"],["a2"]),
-  node("Conv",["a2","W3","B3"],["c3"],(weights[2].kernel.k-1)*16/2,16),
+  node("Conv",["a2","W3","B3"],["c3"],(weights[2].kernel.k-1)/2,1),
   node("Tanh",["c3"],["a3"]),
   node("Conv",["a3","W4","B4"],["c4"],0),
   node("Add",["c4","audio_in"],["residual"]),
