@@ -4,6 +4,7 @@
  */
 "use strict";
 const fs=require("node:fs"),ort=require("onnxruntime-web");
+const vm=require("node:vm");
 const path=require("node:path");
 const DIR=process.env.VOICE_TEST_DIR||"/tmp/irl-voice-audio-test";
 const root=path.join(process.cwd(),"node_modules","onnxruntime-web","dist")+path.sep;
@@ -77,11 +78,32 @@ function pitch(pcm){
  }
  if(!output.every(Number.isFinite))throw Error("Nonfinite ONNX speech samples");
  wav("voice-source.wav",src);wav("voice-onnx-13mb.wav",output);
+ // Use the exact production post-neural shifter, not another approximate DSP
+ // in tests. The real ONNX speech MUST be generated first.
+ const scope={self:{postMessage(){}},Float32Array,Number,Math,Promise,console};
+ const liveWorker=fs.readFileSync(path.join(__dirname,"../live-vc/fast-voice-worker.js"),"utf8");
+ vm.runInNewContext(liveWorker+"\nthis.PitchClass=NeuralPitchFinish;",scope);
+ const shifter=new scope.PitchClass();shifter.setSemitones(6);
+ const finished=new Float32Array(output.length);
+ for(let pos=0;pos<output.length;pos+=chunkSize){
+  const done=shifter.process(output.subarray(pos,Math.min(pos+chunkSize,output.length)));
+  finished.set(done,pos);
+ }
+ wav("voice-onnx-plus6-dsp.wav",finished);
+ const purePitch=pitch(output),finishedPitch=pitch(finished);
+ if(!purePitch.median||!finishedPitch.median)
+  throw Error("Could not measure pitches in real neural and post-neural speech output");
+ if(finishedPitch.median<purePitch.median*1.2||finishedPitch.median>purePitch.median*1.7)
+  throw Error("Production +6 semitone post-ONNX pitch did not shift REAL neural speech: "+
+   purePitch.median+" -> "+finishedPitch.median);
+ console.log("PASS real 13.7 MB neural WAV -> production +6 semitone DSP "+purePitch.median+
+  "Hz -> "+finishedPitch.median+"Hz while preserving speech duration.");
  const result={
-  samples:src.length,inputPitch:pitch(src),outputPitch:pitch(output),...stats(src,output),
+  samples:src.length,inputPitch:pitch(src),outputPitch:pitch(output),
+  postNeuralPitch:pitch(finished),...stats(src,output),
   model:"Published 13.7 MB female_voice_hfg_new.onnx",historySize,chunkSize,
   totalInferenceMs:Math.round(totalMs),RTF:+(totalMs/(src.length/16)).toFixed(3),
-  note:"Pitch estimates and waveform differences are NOT a speaker similarity score."
+  note:"Post-neural +6 pitch shifting is optional separate DSP, not proof of target speaker identity. Listen to all three WAVs."
  };
  fs.writeFileSync(path.join(DIR,"metrics.json"),JSON.stringify(result,null,2));
  console.log("REAL PRETRAINED VOICE CHECK",JSON.stringify(result));
