@@ -42,7 +42,7 @@ const fakeORT={
     }
    };
    return {
-    inputNames:["phone","phone_lengths","pitch","pitchf","ds","rnd"],
+    inputNames:["phone","phone_lengths","pitch","nsff0","sid","noise"],
     inputMetadata:{phone:{dimensions:[1,512,768]}},
     outputNames:["audio"],
     async run(feeds){
@@ -51,7 +51,7 @@ const fakeORT={
      assert(feeds.pitch instanceof Tensor);
      assert.equal(feeds.phone.dims[2],768);
      assert.equal(feeds.phone.dims[1],512,"Fixed-size voice must receive 512 padded frames");
-     assert.equal(feeds.rnd.dims[2],512,"Fixed frame noise shape wrong");
+     assert.equal(feeds.noise.dims[2],512,"Real generator noise input has wrong frame count");
      const count=feeds.phone.dims[1]*480,pcm=new Float32Array(count);
      for(let i=0;i<count;i++)pcm[i]=.2*Math.sin(i*2*Math.PI*220/48000);
      return {audio:new Tensor("float32",pcm,[1,1,count])};
