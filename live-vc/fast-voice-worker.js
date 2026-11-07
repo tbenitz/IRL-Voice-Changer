@@ -4,7 +4,7 @@
    Browser WASM inference; main thread owns capture/output and keeps voice muted on errors.
  */
 "use strict";
-const WORKER_BUILD="20261106-cacheguard-v5";
+const WORKER_BUILD="20261107-voice-safety-v6";
 const ORT_DIST="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/";
 let ortReady=false, session=null, history=new Float32Array(4096), busy=false, initialized=false;
 let sourceRate=16000;
