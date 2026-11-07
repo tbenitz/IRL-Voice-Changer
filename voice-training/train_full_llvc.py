@@ -217,6 +217,8 @@ def main():
     p.add_argument("--steps", type=int, default=10000)
     p.add_argument("--batch", type=int, default=4)
     p.add_argument("--name", default="my_custom_neural_voice")
+    p.add_argument("--export-only", action="store_true",
+                   help="Export saved G_<steps>.pth to ONNX without retraining")
     a = p.parse_args()
     import torch
     require(torch.cuda.is_available(), "Full LLVC distillation requires a CUDA GPU; no CPU-only pretend run")
@@ -226,8 +228,19 @@ def main():
     print("Genuine teacher corpus:", validate_data(a.dataset.resolve()), flush=True)
     upstream = a.llvc.resolve()
     output = a.output.resolve()
-    setup(upstream, output, a.dataset.resolve(), a.steps, a.batch)
-    train(upstream, output)
+    expected = output / "checkpoints" / f"G_{a.steps}.pth"
+    if a.export_only:
+        require((output / "config.json").is_file(),
+                "Cannot export: no saved LLVC training config")
+        require(expected.is_file(),
+                f"Cannot export: checkpoint not present: {expected}")
+        print("Exporting saved checkpoint without repeating training:", expected, flush=True)
+    else:
+        setup(upstream, output, a.dataset.resolve(), a.steps, a.batch)
+        if expected.is_file():
+            print("Requested checkpoint already exists; skipping training:", expected, flush=True)
+        else:
+            train(upstream, output)
     export(upstream, output, a.steps, a.name)
 
 if __name__ == "__main__":
