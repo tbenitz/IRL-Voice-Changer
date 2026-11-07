@@ -73,7 +73,7 @@ def available_model_files(job_dir):
     output = job_dir / "llvc-trained"
     checkpoints = []
     for file in (output / "checkpoints").glob("G_*.pth"):
-        match = re.fullmatch(r"G_(\\d+)\\.pth", file.name)
+        match = re.fullmatch(r"G_(\d+)\.pth", file.name)
         if match and file.is_file() and file.stat().st_size >= 2_000_000:
             checkpoints.append((int(match.group(1)), file))
     pth_file = max(checkpoints, key=lambda item: item[0])[1] if checkpoints else None
@@ -85,7 +85,7 @@ def available_model_files(job_dir):
             report = json.loads(report_file.read_text())
             name = report.get("file", "")
             if (isinstance(name, str) and
-                    re.fullmatch(r"[A-Za-z0-9_-]+\\.onnx", name) and
+                    re.fullmatch(r"[A-Za-z0-9_-]+\.onnx", name) and
                     isinstance(report.get("steps"), int) and
                     report.get("onnx_io") == "audio_in -> audio_out"):
                 candidate = output / name
