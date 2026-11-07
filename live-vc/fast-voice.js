@@ -15,6 +15,7 @@ const voices={
 const app={token:0,loading:false,active:false,worker:null,stream:null,ctx:null,
  source:null,capture:null,gain:null,sources:new Set(),abort:null,inFlight:false,pending:null,
  nextPlayTime:0,drops:0,chunkFrames:2048,historySamples:4096,lastCapture:0,
+ queue:[],slowCount:0,requestedHistory:0,adaptations:0,
  workerBlobUrl:null,verifiedWorkerBuild:false,
  audit:null,inFlightSource:null,auditUrls:[]};
 const CACHE="irl-fast-neural-voice-models", STORE="weights";
@@ -191,7 +192,7 @@ async function stop(message){
  try{await app.ctx?.close()}catch(_){}
  Object.assign(app,{abort:null,worker:null,ctx:null,stream:null,source:null,capture:null,
   gain:null,inFlight:false,pending:null,nextPlayTime:0,lastCapture:0,
-  inFlightSource:null,
+  queue:[],slowCount:0,requestedHistory:0,adaptations:0,inFlightSource:null,
   workerBlobUrl:null,verifiedWorkerBuild:false});
  $("download").hidden=true;
  toggle();badge("OFF · MUTED");
@@ -260,9 +261,17 @@ function inputChunk(pcm){
  meters("input-meter",pcm);
  const block={pcm,at:performance.now()};
  if(app.inFlight){
-  if(app.pending)app.drops++;
-  app.pending=block;
-  $("drops").textContent=String(app.drops);
+  // Never replace speech segments with newer ones: that is what caused
+  // entire words to disappear at the 500/1000-ms history settings.
+  if(app.queue.length>=2){
+   void stop("NEURAL OVERLOAD: the model cannot process speech in real time with "+
+    Math.round(app.historySamples/16)+" ms previous context. Output muted instead of "+
+    "chopping up your words. Choose 256 or 128 ms context, or a faster model.");
+   return;
+  }
+  app.queue.push(block);
+  $("performance-note").textContent="Model behind microphone; buffering "+
+    app.queue.length+" whole speech chunk(s) without discarding any words.";
   return;
  }
  convert(block);
@@ -290,20 +299,38 @@ function play(d){
   :correlation>.97
    ?"Warning: ONNX audio still tracks the original waveform closely. This may NOT sound like another speaker."
    :"ONNX output differs from the input waveform. Compare the A/B recordings to judge audible timbre; this is NOT proof of speaker identity.";
- $("performance-note").textContent=rtf<=.7?"Running faster than real time with useful headroom.":
-  rtf<1?"Near the processing limit; try a larger chunk if audio skips.":
-  "This setting is slower than real-time on your device. Try a shorter history or larger chunk.";
+ // RTF is real inference time / audio duration. Context of 500-1000 ms
+ // can overload a Chromebook, even though 256 ms runs fine.
+ if(rtf>.86)app.slowCount++;else app.slowCount=0;
+ if(app.slowCount>=2&&app.historySamples>2048){
+  const next=app.historySamples>8000?8000:app.historySamples>4096?4096:2048;
+  app.requestedHistory=next;
+  app.slowCount=0;
+ }
+ if(rtf>1.08&&app.historySamples<=2048&&app.slowCount>=3){
+  void stop("NEURAL OVERLOAD: the model needs "+Math.round(elapsed)+
+    " ms for "+Math.round(app.chunkFrames/16)+" ms of microphone audio, "+
+    "even at the minimum 128-ms context. It cannot run continuously on this CPU. "+
+    "Output muted instead of playing incomplete speech.");
+  return;
+ }
+ $("performance-note").textContent=app.requestedHistory
+  ?"AUTO-RECOVERY: neural inference is too slow with "+Math.round(app.historySamples/16)+
+    " ms history. Preserving speech and reducing previous context to "+
+    Math.round(app.requestedHistory/16)+" ms."
+  :rtf<=.7?"Model processing ahead of live speech."
+  :rtf<=1?"Limited processing headroom. Voice history will reduce if sustained."
+  :"Too slow for continuous live audio. Automatically shortening history; will mute rather than skip words if recovery fails.";
  const actualDelay=performance.now()-app.lastCapture+app.chunkFrames/16;
  if(actualDelay>1900){
-  app.drops++;$("drops").textContent=String(app.drops);
-  info("Neural audio exceeded 1.9 seconds of delay; dropped, never replaced with original mic.",true);
+  void stop("NEURAL OVERLOAD: inference arrived over 1.9 seconds late. "+
+   "Audio muted rather than skipping the words you spoke. Reduce previous context.");
   return;
  }
  const scheduled=Math.max(ctx.currentTime+.025,app.nextPlayTime);
- if(scheduled>ctx.currentTime+.65){
-  app.drops++;$("drops").textContent=String(app.drops);
-  app.nextPlayTime=ctx.currentTime;
-  info("Processing queue overfull; dropping converted block to catch up.",true);
+ if(scheduled>ctx.currentTime+Math.max(1.3,app.chunkFrames/16000*2.5)){
+  void stop("NEURAL OVERLOAD: audio playback fell too far behind real-time speech. "+
+   "Stopped instead of cutting out words. Choose a shorter previous-audio context.");
   return;
  }
  const buf=ctx.createBuffer(1,pcm.length,rate),channel=buf.getChannelData(0);
@@ -350,7 +377,21 @@ function eventFromWorker(e,token){
  }else if(d.type==="audio")play(d);
  else if(d.type==="idle"){
   app.inFlight=false;
-  if(app.active&&app.pending){const next=app.pending;app.pending=null;convert(next)}
+  if(!app.active||!app.worker)return;
+  if(app.requestedHistory){
+   // The worker replies "idle" after clearing its busy state; configuration
+   // is therefore applied BEFORE the next queued conversion, not silently lost.
+   const next=app.requestedHistory;
+   app.requestedHistory=0;app.historySamples=next;app.adaptations++;
+   $("history").value=String(next);
+   app.worker.postMessage({type:"config",historySamples:next});
+   $("performance-note").textContent="Long previous-audio context overloaded this device. "+
+    "Reduced to "+Math.round(next/16)+" ms without clearing microphone history.";
+  }
+  if(app.queue.length)convert(app.queue.shift());
+ }else if(d.type==="config-applied"){
+  if(app.active)$("performance-note").textContent=
+   "Neural history reconfigured to "+Math.round(d.historySamples/16)+" ms with speech context preserved.";
  }else if(d.type==="dropped"){
   app.drops++;$("drops").textContent=String(app.drops);
   if(d.reason)info("ONNX output block muted/dropped: "+d.reason,true);
@@ -398,6 +439,7 @@ async function start(){
   info("Requires Chrome over HTTPS with microphone and AudioWorklet permission.",true);return;
  }
  app.loading=true;app.drops=0;app.inFlight=false;app.pending=null;
+ app.queue=[];app.slowCount=0;app.requestedHistory=0;app.adaptations=0;
  app.chunkFrames=Number($("chunk").value)||8192;
  app.historySamples=Number($("history").value)||4096;
  $("drops").textContent="0";$("lag").textContent="—";$("inference").textContent="—";$("rtf").textContent="—";
