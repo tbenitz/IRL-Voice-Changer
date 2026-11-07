@@ -29,6 +29,7 @@
   }
   async function stop(reason){
     app.sessionToken++;
+    window.__IRL_RVC_cancelPreparation?.();
     app.active=false;app.loading=false;app.inFlight=false;app.pending=null;
     try{app.capture?.port.postMessage({type:"enable",enabled:false})}catch(_){}
     try{app.stream?.getTracks().forEach(t=>t.stop())}catch(_){}
@@ -165,33 +166,48 @@
   async function start(){
     if(app.active||app.loading)return;
     const get=window.__IRL_RVC_getModels;
-    if(typeof get!=="function"){show("RVC model file controls are not loaded. Refresh the page.",true);return}
-    const files=get();
-    if(files.busy){show("Another model conversion is running; finish it first.",true);return}
-    if(!files.voice||!files.contentVec||!files.rmvpe){
-      show("First choose a trained RVC v2 .onnx voice checkpoint and download/upload ContentVec + RMVPE in the model files section below.",true);
-      document.getElementById("rvc")?.scrollIntoView({behavior:"smooth"});
-      return;
+    if(typeof get!=="function"){
+      show("Model controls unavailable. Reload the studio.",true);return;
     }
-    if(!files.voice.name.toLowerCase().endsWith(".onnx")){show("RVC requires a trained .onnx voice checkpoint, not an MP3 reference.",true);return}
-    if(!window.isSecureContext||!window.AudioWorkletNode){show("Chrome secure context and AudioWorklet are required.",true);return}
-    app.loading=true;app.chunkMs=Number($("rvc-live-chunk").value)||1500;
-    app.drops=0;app.inFlight=false;app.pending=null;
-    $("rvc-live-drops").textContent="0";$("rvc-live-processing").textContent="—";$("rvc-live-lag").textContent="—";
+    if(!window.isSecureContext||!window.AudioWorkletNode){
+      show("Recent Chrome over HTTPS with AudioWorklet is required.",true);return;
+    }
+    const before=get();
+    if(before.busy){show("A recording conversion is already running. Stop that before starting the live microphone.",true);return;}
     const token=++app.sessionToken;
-    toggleButtons(true);badge("LOADING…");
+    app.loading=true;
+    app.chunkMs=Number($("rvc-live-chunk").value)||1500;
+    app.drops=0;app.inFlight=false;app.pending=null;
+    $("rvc-live-drops").textContent="0";
+    $("rvc-live-processing").textContent="—";
+    $("rvc-live-lag").textContent="—";
+    toggleButtons(true);
+    badge("PREPARING MODEL");
     try{
+      // Unlock sound output while still in the user's activation handler.
       const ctx=new (window.AudioContext||window.webkitAudioContext)({latencyHint:"interactive"});
       app.ctx=ctx;
       await ctx.resume();
-      app.worker=new Worker("./rvc-stream-worker.js?v=20261106-rvc1");
+      let files=get();
+      if(!files.voice||!files.contentVec||!files.rmvpe){
+        if(typeof window.__IRL_RVC_prepareModels!=="function")throw Error("Built-in model downloader unavailable.");
+        show("Downloading licensed RVC voice and ONNX support models to your device. No microphone audio is uploaded.");
+        await window.__IRL_RVC_prepareModels();
+        if(token!==app.sessionToken)return;
+        files=get();
+      }
+      if(!files.voice||!files.contentVec||!files.rmvpe)
+        throw Error("RVC voice, ContentVec or RMVPE model is missing after setup.");
+      if(!files.voice.name.toLowerCase().endsWith(".onnx"))
+        throw Error("The selected voice must be a trained RVC ONNX checkpoint.");
+      badge("LOADING ONNX");
+      show("Reading downloaded ONNX models into a persistent browser worker…");
+      app.worker=new Worker("./rvc-stream-worker.js?v=20261106-auto1");
       app.worker.onmessage=event=>workerEvent(event,token);
       app.worker.onerror=event=>{
         if(token!==app.sessionToken)return;
-        void stop("RVC worker failed ("+(event.message||"unknown")+"). Audio muted; no original-mic fallback.");
+        void stop("RVC worker failed ("+(event.message||"unknown")+"). Original microphone remains muted.");
       };
-      show("Reading model files into a persistent browser ONNX worker. No voice recording is uploaded.");
-      // Read sequentially to avoid concurrent file decompression/allocations.
       const voice=await files.voice.arrayBuffer();
       if(token!==app.sessionToken)return;
       const contentVec=await files.contentVec.arrayBuffer();
@@ -200,10 +216,13 @@
       if(token!==app.sessionToken)return;
       app.worker.postMessage({
         type:"init",voice,contentVec,rmvpe,
-        sampleRate:Number($("rvc-live-rate").value)||48000
+        sampleRate:Number($("rvc-live-rate").value)||48000,
+        fixedVoiceFrames:files.fixedVoiceFrames||0
       },[voice,contentVec,rmvpe]);
     }catch(e){
-      await stop("Unable to load real RVC: "+(e?.message||e)+". No audio was passed through.");
+      if(token!==app.sessionToken)return;
+      const reason="Real RVC model setup failed: "+(e?.message||e)+". No raw microphone was played.";
+      await stop(reason);
     }
   }
   $("rvc-live-start").addEventListener("click",()=>{void start()});
