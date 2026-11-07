@@ -10,6 +10,24 @@ suggested_hardware: t4-medium
 
 # Custom neural voice trainer — GPU Space
 
+## Current fix: small JSON report incorrectly rejected after successful ONNX export
+
+The reported 500-step run **successfully exported and verified a 13.72 MB ONNX** but the original ZIP step rejected `model_report.json` for being less than 1024 bytes. The current `one_click_pipeline.py` checks the small report for valid JSON, matching model name and matching step count instead. A **CPU-only "Recover completed PTH + ONNX as ZIP"** control is provided when model files still exist. It requires neither teacher conversion nor any new GPU training.
+
+The Space now shows **live factual progress** using separate bars:
+- accepted teacher pairs, **0–400**;
+- neural training updates, **0–500 / 1,000 / 2,000 / 5,000 / 10,000**;
+- ONNX export/ZIP packaging status.
+
+Other cost-saving changes: source FLAC audio is decoded *only when needed*, instead of transcoding all 800 candidate clips up front; short runs save more intermediate PTH checkpoints; final checkpoint reuse skips setup and retraining. The teacher model is already loaded only once for all 400 conversions.
+
+**Before spending GPU time again:** replace **exactly `app.py` and `Dockerfile` in the root of your actual Hugging Face Space** with the current files in this folder. The Dockerfile will clone the latest GitHub training scripts during rebuild. Leave `requirements.txt` alone. This does rebuild the Space, so ephemeral files from earlier runs cannot be counted on for recovery.
+
+A paused/restarted Space **discards temporary files**. Attach a **read-write Hugging Face Storage Bucket** at `/data` in your actual Space's settings *before* running the expensive pipeline again. The new app automatically detects a writable `/data` mount and uses it for datasets, checkpoints, HF model downloads, and source speech corpus; otherwise it displays a visible temporary-storage warning. The existing 500-update model is not proof of an accurate voice clone; assess the comparison WAVs.
+
+**Default training length is now 500 updates** for an initial test; this may not learn the speaker well. Choose more updates deliberately only after checking your trial model. Updating code is not equivalent to verifying a T4 training run.
+
+
 ## Fix: LLVC port collision after 400/400 pairs (Nov 7, 2026)
 
 The original upstream `KoeAI/LLVC/train.py` forces distributed process group `MASTER_PORT=12355`. In the reported private T4 Space, this produced `RuntimeError: EADDRINUSE` as soon as training launched, even though **400/400 teacher pairs were successfully created**. The patched `voice-training/train_full_llvc.py` now replaces that hard-coded assignment with an environment-aware default and assigns a random available localhost port for each training run.
