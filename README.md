@@ -4,6 +4,16 @@
 **Real ONNX RVC recording conversion (experimental):** https://tbenitz.github.io/IRL-Voice-Changer/live-vc/#rvc  
 **Local testing choices (no embedded hosted demos):** https://tbenitz.github.io/IRL-Voice-Changer/online-test/
 
+## One-click RVC voice setup (Chromebook / Chrome)
+
+Open [Live AI RVC](https://tbenitz.github.io/IRL-Voice-Changer/live-vc/#rvc-live), select one of four built-in licensed RVC v2 target voices, and press **Download selected RVC & start mic**. The browser downloads the selected ~58 MB voice checkpoint plus ~95 MB ContentVec and ~99 MB RMVPE support models. The first download totals roughly 250 MB; files are cached in IndexedDB when storage permits. Subsequent visits reuse downloaded files if the browser retains the cache.
+
+Four preset checkpoints come from [Ampixa Labs Nepali RVC Voices v1](https://huggingface.co/ampixa/nepali-rvc-voices-v1) under **CC BY 4.0**. The ONNX generators have fixed 512-frame inputs, which the local streaming worker pads and trims. The MIT-licensed shared Q8 supporting models come from [TigreGotico/voiceclonnx-rvc](https://huggingface.co/TigreGotico/voiceclonnx-rvc). All voice and model downloads are static assets; **no user microphone audio goes to Hugging Face**.
+
+For a pre-mic recording comparison, use **Test selected voice (first 3 sec)** in the recording section after uploading a short source MP3/WAV. It uses the same local RVC ONNX worker and checkpoints, not an external demo or text-to-speech.
+
+**Performance note:** Browser inference on an 8 GB Chromebook has not been benchmarked end-to-end with these specific weights. The fixed-frame neural generator may run too slowly to support real-time speech. A passed automated deployment or mocked-ONNX test does not prove sound quality, compatibility or latency with the actual models. On any error, the live output stays muted rather than passing through unconverted microphone audio.
+
 ## What's implemented—and what still isn't
 
 The live microphone page is **client-side AudioWorklet DSP**: microphone PCM is transformed by granular pitch processing, filtering, and gating and sent to the local output. It **is not an RVC/Beatrice/Seed-VC model**. The fail-closed audio chain never automatically forwards dry microphone audio.
