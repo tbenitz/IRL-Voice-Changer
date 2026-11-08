@@ -106,6 +106,7 @@ def command_for_job(job, config):
         "--pairs", str(int(config["pairs"])),
         "--steps", str(int(config["steps"])),
         "--teacher-steps", str(int(config["teacher_steps"])),
+        "--name", str(config.get("model_name") or "custom_voice"),
         "--batch", "2", "--skip-zip",
     ]
 
