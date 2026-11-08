@@ -19,6 +19,47 @@ import uuid
 import gradio as gr
 
 BASE = Path("/app")
+
+
+def refresh_training_code():
+    """Bust Docker's cached git-clone layer once at app startup.
+
+    The existing Dockerfile clones GitHub in a cached image layer BEFORE
+    it copies app.py. Changing app.py alone would otherwise ship OLD
+    training scripts even though GitHub has the updated worker/quality code.
+    """
+    checkout = BASE / "irl-voice"
+    required = checkout / "voice-training" / "job_worker.py"
+    if not (checkout / ".git").is_dir():
+        return "Training checkout missing; refusing paid work."
+    try:
+        fetched = subprocess.run(
+            ["git", "-C", str(checkout), "fetch", "--depth", "1",
+             "origin", "main"],
+            capture_output=True, text=True, timeout=90,
+        )
+        if fetched.returncode != 0:
+            raise RuntimeError(fetched.stderr[-500:])
+        reset = subprocess.run(
+            ["git", "-C", str(checkout), "reset", "--hard", "FETCH_HEAD"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if reset.returncode != 0:
+            raise RuntimeError(reset.stderr[-500:])
+    except Exception as exc:
+        if not required.is_file():
+            return f"Could not load new training code: {exc}"
+    if not required.is_file():
+        return "Missing detached job_worker.py after sync; refused to start paid job."
+    pipeline = checkout / "voice-training" / "one_click_pipeline.py"
+    teacher = checkout / "voice-training" / "generate_teacher_pairs.py"
+    if ("--skip-zip" not in pipeline.read_text() or
+            "quality_metrics" not in teacher.read_text()):
+        return "Wrong training source revision; refusing GPU run until it is updated."
+    return ""
+
+
+CODE_PROBLEM = refresh_training_code()
 ID_RE = re.compile(r"^[0-9a-f]{12}$")
 MODEL_RE = re.compile(r"^[A-Za-z0-9_-]+\.onnx$")
 PROFILES = {
@@ -279,6 +320,10 @@ def start_job(audio, profile, previous_id):
             )
     except Exception as exc:
         return previous_id or "", previous_id or "", f"GPU check failed: {exc}"
+    if CODE_PROBLEM:
+        return previous_id or "", previous_id or "", (
+            "Cannot start paid training: " + CODE_PROBLEM
+        )
     pairs, steps, teacher = PROFILES[profile]
     job_id = uuid.uuid4().hex[:12]
     job = JOBS / job_id
@@ -380,6 +425,8 @@ def make_app():
             secret="LLVC-private-space-browser-job-id-stable-v4",
         )
         last_seen = gr.State(("", "", "", "", "", ""))
+        if CODE_PROBLEM:
+            gr.Markdown("**Training disabled before GPU use:** " + CODE_PROBLEM)
         gr.Markdown(
             "# LLVC Neural Voice Studio\n"
             "Your training is a **server-side job**, not a browser session. "
