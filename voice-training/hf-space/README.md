@@ -1,5 +1,5 @@
 ---
-title: One-click Custom Neural Voice Trainer
+title: LLVC Neural Voice Studio
 emoji: 🎙️
 colorFrom: indigo
 colorTo: purple
@@ -8,57 +8,45 @@ app_port: 7860
 suggested_hardware: t4-medium
 ---
 
-# Custom neural voice trainer — GPU Space
+# LLVC Neural Voice Studio — Hugging Face T4 Docker Space
 
-## Current fix: small JSON report incorrectly rejected after successful ONNX export
+This repo folder contains files used by the separate Hugging Face Space repository, **not** a live deployment. To update the running private Space `tstone87/LLVC-Voice-Changer`, copy **only the current `app.py` from this folder** to the **root of that Hugging Face Space repository**; the already-installed Dockerfile clones this GitHub repo. At Space startup `app.py` now performs a one-time `git fetch` to avoid an outdated Docker cached clone. If that sync fails or a required worker script is missing, the app **refuses to start paid training** instead of failing after hours.
 
-The reported 500-step run **successfully exported and verified a 13.72 MB ONNX** but the original ZIP step rejected `model_report.json` for being less than 1024 bytes. The current `one_click_pipeline.py` checks the small report for valid JSON, matching model name and matching step count instead. A **CPU-only "Recover completed PTH + ONNX as ZIP"** control is provided when model files still exist. It requires neither teacher conversion nor any new GPU training.
+## Architecture — avoid lost results on page refresh
 
-The Space now shows **live factual progress** using separate bars:
-- accepted teacher pairs, **0–400**;
-- neural training updates, **0–500 / 1,000 / 2,000 / 5,000 / 10,000**;
-- ONNX export/ZIP packaging status.
+1. User uploads a consented recording and chooses a profile.
+2. App copies the recording into a server-side job with a permanent-in-the-running-container 12-character job ID.
+3. It launches `voice-training/job_worker.py` as a **detached process**, not a long-running Gradio queue callback. A refresh, closed tab, or browser stream error does not terminate this worker while the same container keeps running.
+4. Worker writes atomic `job_state.json`, a persistent `job.log`, and saves PTH training checkpoints plus ONNX exports under `voice-jobs/<job-id>/llvc-trained`.
+5. Browser job ID is stored in Gradio `BrowserState` (stable storage key and secret) so reloading the page reopens the same job. The **Saved jobs** picker also locates jobs on disk if browser storage was lost.
+6. A 3-second read-only timer retrieves real accepted pair counts, real training update counts, saved logs, PTH/ONNX paths, and A/B original/Seed-VC/LLVC comparison audio. No upload or retraining is triggered by reopening.
+7. Gradio provides **two independent download controls: PTH checkpoints and validated ONNX**. No ZIP is generated in the Hugging Face Space flow.
 
-Other cost-saving changes: source FLAC audio is decoded *only when needed*, instead of transcoding all 800 candidate clips up front; short runs save more intermediate PTH checkpoints; final checkpoint reuse skips setup and retraining. The teacher model is already loaded only once for all 400 conversions.
+## Quality profiles (GPU resource use rises with each option)
 
-**Before spending GPU time again:** replace **exactly `app.py` and `Dockerfile` in the root of your actual Hugging Face Space** with the current files in this folder. The Dockerfile will clone the latest GitHub training scripts during rebuild. Leave `requirements.txt` alone. This does rebuild the Space, so ephemeral files from earlier runs cannot be counted on for recovery.
+| Profile | Accepted teacher pairs | LLVC fine-tuning updates | Seed-VC diffusion steps |
+|---|---:|---:|---:|
+| Lower-cost trial | 400 | 1,000 | 10 |
+| High fidelity (default) | 800 | 5,000 | 20 |
+| Studio extended | 1,200 | 8,000 | 24 |
 
-A paused/restarted Space **discards temporary files**. Attach a **read-write Hugging Face Storage Bucket** at `/data` in your actual Space's settings *before* running the expensive pipeline again. The new app automatically detects a writable `/data` mount and uses it for datasets, checkpoints, HF model downloads, and source speech corpus; otherwise it displays a visible temporary-storage warning. The existing 500-update model is not proof of an accurate voice clone; assess the comparison WAVs.
+These are *not* promises of target-speaker resemblance. The training dataset uses genuine same-utterance source and teacher-converted pairs. Newly added quality filters check silent files, non-finite samples, excessive gain mismatch and severe clipping, and retain an audit summary in `dataset/quality_report.json`. The app provides A/B listening samples so the user can check whether it learned the intended voice.
 
-**Default training length is now 500 updates** for an initial test; this may not learn the speaker well. Choose more updates deliberately only after checking your trial model. Updating code is not equivalent to verifying a T4 training run.
+## What happens on errors
 
+- Pausing/closing the **browser tab**: the detached job continues and the UI can reconnect.
+- Failing a late export or packaging step: any saved PTH checkpoint remains available. The Hugging Face Space does not perform ZIP packaging.
+- Worker error or GPU failure: the job log and any finished artifacts remain accessible while the container/disk exists. Use **Resume saved job** only when the original dataset and recording are still present.
+- **Space pause, hardware change, container restart/rebuild, or full container crash:** Hugging Face erases ephemeral disk. No software can guarantee recovery from those events without writing the files to storage outside that ephemeral disk. An optional mounted persistent bucket is supported but **not required** to run the app. Users should download available PTH/ONNX before shutting down their T4. This limitation should never be hidden.
 
-## Fix: LLVC port collision after 400/400 pairs (Nov 7, 2026)
+## Before spending GPU time
 
-The original upstream `KoeAI/LLVC/train.py` forces distributed process group `MASTER_PORT=12355`. In the reported private T4 Space, this produced `RuntimeError: EADDRINUSE` as soon as training launched, even though **400/400 teacher pairs were successfully created**. The patched `voice-training/train_full_llvc.py` now replaces that hard-coded assignment with an environment-aware default and assigns a random available localhost port for each training run.
+1. Copy only the latest `app.py` to root of the existing Hugging Face Space and let it rebuild. The existing Dockerfile and requirements.txt remain unchanged.
+2. Open the App screen on CPU if desired. Confirm the new **Saved Jobs** section, **Quality / compute profile**, direct PTH/ONNX controls and the absence of a code revision warning.
+3. If the old ephemeral disk survived, use Saved Jobs to look for earlier training outputs (legacy job folders are supported). Do **not** launch a new job until checking.
+4. If no saved job remains and you elect to train, do not close or pause the Space before downloading any available artifacts.
 
-The Gradio UI now includes **Recover an interrupted job**. Enter an existing 12-character ID (for example `699d49e13cea`) to resume its saved dataset if the same disk remains accessible, *without rerunning teacher conversion*. The **Download saved pairs before rebuilding** button archives existing teacher WAV pairs and reference audio in a ZIP. It works only if the original job files still exist and you have deployed the updated app without losing the original disk. Uploads are not automatically restored after a rebuild.
+## Testing notes
 
-**Critical:** the default `/home/user/voice-data` is ephemeral on Spaces. Rebuilding, stopping, or changing hardware may erase it. Hugging Face recommends an attached read/write Storage Bucket for persistence. When using a bucket mounted at e.g. `/data`, set the Space's `VOICE_WORKSPACE` environment variable to `/data` after verifying the mount is writable. This will make future resumed jobs persistent; it cannot retroactively recover files that were already deleted. Hugging Face *Dev Mode* (PRO/Team/Enterprise) can sometimes let you patch and resume **in the existing container** without a rebuild; standard code commits always rebuild the underlying image.
+GitHub Actions source-check workflow syntax-checks all training Python and notebooks, runs CPU-only regression tests (including simulated detached jobs, browser refresh scenarios, checkpoint salvage and packaging failure), and constructs the actual Gradio 6 UI on CPU. **A synthetic test cannot establish live GPU compatibility or speaker similarity.** Treat the full T4 run as unverified until an actual successful run demonstrates that PTH and ONNX are both downloadable.
 
-## Runtime errors fixed (Nov 7, 2026)
-
-The original Dockerfile configured `HF_HOME=/data/hf-cache` and prepared `/data` during Docker build, which fails in environments without a writable `/data` mount. **The updated Dockerfile and `app.py` no longer require `/data`.** Temporary jobs, downloads and caches use `/home/user/voice-data`, owned by UID 1000. Recopy **both** files to the root of your actual Space and rebuild; updating the GitHub template does **not** update a separate Hugging Face repository automatically.
-
-The message **"NVIDIA Driver was not detected"** means the running container cannot access an NVIDIA GPU. In the Hugging Face Space open **Settings → Space hardware**, assign a dedicated **T4 GPU** and restart. `suggested_hardware` in YAML does not provision a GPU. The interface can start on CPU, but it will refuse training rather than spending time trying to train without CUDA.
-
-
-**Upload one file, get one download:** WAV, MP3, FLAC, M4A, OGG or OPUS from **2 seconds to 2 hours**. The source is decoded only for its **first 3 minutes** and the best roughly **30-second contiguous speaking window** is selected as the reference (or the full clip if shorter).
-
-The GPU runs:
-1. Official **Seed-VC** reference-conditioned voice conversion for **400 accepted** parallel original/conversion pairs (rejected conversions are replaced with new source examples).
-2. Fine-tuning the **pretrained full KoeAI LLVC HiFi-GAN network**, normally **5,000 gradient updates** (editable in the Space).
-3. Full ONNX export and ONNX Runtime validation with `audio_in → audio_out`.
-4. **One downloadable ZIP** with the trained `G_5000.pth`, `.onnx`, config, manifest, report, and A/B WAV recordings.
-
-## Deploy in Hugging Face Spaces
-
-Create a **new Hugging Face Space** with **Docker** SDK and select a dedicated **NVIDIA T4 GPU** (T4 Medium suggested). Copy the **four files in this folder** — `README.md`, `Dockerfile`, `requirements.txt`, and `app.py` — to the **root** of the Space repository. The Dockerfile clones [tbenitz/IRL-Voice-Changer](https://github.com/tbenitz/IRL-Voice-Changer) and the two upstream model projects at image build time. No Colab or local Python is needed.
-
-Space GPU usage is billed while hardware is active. Building the container requires networking and disk space. **The Space template has not been deployed or end-to-end GPU tested in this conversation.** Do not call the service finished until it successfully exports and you audition the ONNX.
-
-## Storage
-
-Temporary Space files are lost on restart unless a Storage Bucket or another persistent store is attached. Uploading a two-hour audio file still transfers the **whole file** before the GPU analyzes at most three minutes. Very large uploads may be constrained by client/network/Space storage. The ZIP becomes available only after BOTH PTH and ONNX validation pass.
-
-Do not upload recordings you lack permission to process. Voice similarity is not guaranteed, especially with 2–3 second samples.
