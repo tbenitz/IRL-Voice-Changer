@@ -16,7 +16,7 @@ jobs:
           python-version: "3.11"
       - name: Check Python training programs
         run: |
-          python -m py_compile voice-training/generate_teacher_pairs.py voice-training/train_full_llvc.py voice-training/colab_setup.py voice-training/one_click_pipeline.py voice-training/hf-space/app.py voice-training/job_worker.py voice-training/tests/test_durable_jobs.py voice-training/tests/test_smoke.py
+          python -m py_compile voice-training/generate_teacher_pairs.py voice-training/train_full_llvc.py voice-training/colab_setup.py voice-training/one_click_pipeline.py voice-training/hf-space/app.py voice-training/job_worker.py voice-training/tests/test_durable_jobs.py voice-training/tests/test_smoke.py voice-training/tests/test_gradio_runtime.py
       - name: Check notebook structure and execution commands
         run: |
           python - <<'PY'
@@ -53,5 +53,9 @@ jobs:
         run: |
           python voice-training/tests/test_smoke.py
           python voice-training/tests/test_durable_jobs.py
+      - name: Build real Gradio 6 interface (no GPU)
+        run: |
+          python -m pip install "gradio==6.5.1"
+          python voice-training/tests/test_gradio_runtime.py
       - name: Check studio entry script
         run: node --check pocket-demo/studio/full-voice-builder.js
