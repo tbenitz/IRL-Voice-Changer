@@ -1,364 +1,406 @@
-"""Hugging Face dedicated GPU Space frontend for the real LLVC voice trainer."""
-import os
-from html import escape
+"""Private Hugging Face LLVC trainer: durable jobs, browser-refresh recovery.
+
+The browser only starts / observes jobs. The detached job_worker.py executes
+the expensive conversion/training separately, so closing or reloading a tab
+does not cancel an active job. Container restarts still erase ephemeral data.
+"""
 from collections import deque
+from html import escape
+import json
+import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import time
 import uuid
-import zipfile
 
 import gradio as gr
 
-ROOT = Path("/app")
+BASE = Path("/app")
+ID_RE = re.compile(r"^[0-9a-f]{12}$")
+MODEL_RE = re.compile(r"^[A-Za-z0-9_-]+\.onnx$")
+PROFILES = {
+    "High fidelity — 800 pairs, 5,000 updates": (800, 5000, 20),
+    "Studio extended — 1,200 pairs, 8,000 updates": (1200, 8000, 24),
+    "Lower-cost trial — 400 pairs, 1,000 updates": (400, 1000, 10),
+}
+DEFAULT_PROFILE = "High fidelity — 800 pairs, 5,000 updates"
 
 
 def select_workspace():
-    # Honor explicitly mounted read/write persistent storage when configured.
-    chosen = os.environ.get("VOICE_WORKSPACE", "").strip()
-    if chosen and chosen.lower() != "auto":
-        target = Path(chosen).resolve()
+    desired = os.environ.get("VOICE_WORKSPACE", "").strip()
+    if desired and desired.lower() != "auto":
+        target = Path(desired).resolve()
         if not target.is_dir() or not os.access(target, os.W_OK):
-            raise RuntimeError(f"VOICE_WORKSPACE is not a writable directory: {target}")
+            raise RuntimeError(f"VOICE_WORKSPACE is not writable: {target}")
         return target
-    bucket = Path("/data")
-    if bucket.is_dir() and os.access(bucket, os.W_OK):
-        return bucket
+    if Path("/data").is_dir() and os.access("/data", os.W_OK):
+        return Path("/data")
     return Path("/home/user/voice-data")
 
 
 WORKSPACE = select_workspace()
-for folder_name in ("voice-jobs", "voice-cache", "hf-cache", "torch-cache"):
-    (WORKSPACE / folder_name).mkdir(parents=True, exist_ok=True)
-# Let all child training processes reuse caches across runs/restarts when a
-# persistent HF Storage Bucket is mounted at /data.
+for suffix in ("voice-jobs", "voice-cache", "hf-cache", "torch-cache"):
+    (WORKSPACE / suffix).mkdir(parents=True, exist_ok=True)
 os.environ["HF_HOME"] = str(WORKSPACE / "hf-cache")
 os.environ["TORCH_HOME"] = str(WORKSPACE / "torch-cache")
 JOBS = WORKSPACE / "voice-jobs"
 CACHE = WORKSPACE / "voice-cache"
 
 
-def progress_html(pairs=0, updates=0, total_steps=500, stage="Ready",
-                  exported=False, packaged=False):
-    """Two real counters, not a fabricated percentage of total wall time."""
-    pairs = max(0, min(400, int(pairs)))
-    total_steps = max(1, int(total_steps))
-    updates = max(0, min(total_steps, int(updates)))
-    state = ("Verified ONNX downloadable" if exported else "Waiting for verified ONNX")
+def safe_dir(job_id):
+    job_id = str(job_id or "").strip()
+    if not ID_RE.fullmatch(job_id):
+        return None
+    folder = JOBS / job_id
+    return folder if (folder / "job_config.json").is_file() else None
+
+
+def load_state(job):
+    try:
+        return json.loads((job / "job_state.json").read_text())
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def write_state(job, state):
+    temp = job / f"job_state.{os.getpid()}.tmp"
+    temp.write_text(json.dumps(state, indent=2))
+    os.replace(temp, job / "job_state.json")
+
+
+def worker_running(state):
+    pid = state.get("worker_pid")
+    if not isinstance(pid, int) or pid <= 1:
+        return state.get("status") == "queued"
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def saved_files(job, state):
+    """Check each artifact separately. Never require a ZIP to exist."""
+    output = job / "llvc-trained"
+    checkpoints = output / "checkpoints"
+    chosen = None
+    safe_reported = state.get("checkpoint")
+    if isinstance(safe_reported, str):
+        candidate = Path(safe_reported)
+        if candidate.parent == checkpoints and candidate.is_file() and candidate.stat().st_size >= 2_000_000:
+            chosen = candidate
+    if chosen is None and state.get("status") in ("failed", "complete", "interrupted"):
+        files = sorted(
+            ((int(m.group(1)), f) for f in checkpoints.glob("G_*.pth")
+             if (m := re.fullmatch(r"G_(\d+)\.pth", f.name))
+             and f.stat().st_size >= 2_000_000),
+            key=lambda item: item[0]
+        )
+        chosen = files[-1][1] if files else None
+    validated = None
+    report_file = output / "model_report.json"
+    if report_file.is_file():
+        try:
+            report = json.loads(report_file.read_text())
+            name = report.get("file")
+            if (isinstance(name, str) and MODEL_RE.fullmatch(name)
+                and type(report.get("steps")) is int
+                and report.get("onnx_io") == "audio_in -> audio_out"):
+                file = output / name
+                companion = checkpoints / f"G_{report['steps']}.pth"
+                if (file.is_file() and companion.is_file()
+                    and file.stat().st_size > 2_000_000
+                    and file.stat().st_size == report.get("size_bytes")):
+                    validated = file
+        except (OSError, ValueError, TypeError, KeyError):
+            pass
+    return (str(chosen) if chosen else None,
+            str(validated) if validated else None)
+
+
+def recent_jobs():
+    jobs = []
+    for job in JOBS.iterdir():
+        if not job.is_dir() or not ID_RE.fullmatch(job.name):
+            continue
+        if not (job / "job_config.json").is_file():
+            continue
+        state = load_state(job)
+        jobs.append((job.stat().st_mtime,
+                     f"{job.name} | {state.get('status', 'unknown')} | "
+                     f"{state.get('pairs_done', 0)}/{state.get('pairs_target', '?')} pairs"))
+    jobs.sort(reverse=True)
+    return [label for _, label in jobs[:30]]
+
+
+def tail_logs(job, limit=110):
+    file = job / "job.log"
+    if not file.is_file():
+        return "Job queued. Training logs will appear here."
+    with open(file, "rb") as handle:
+        handle.seek(0, 2)
+        length = handle.tell()
+        handle.seek(max(0, length - 24000))
+        raw = handle.read().decode("utf-8", errors="replace")
+    return "\n".join(raw.splitlines()[-limit:])
+
+
+def progress_html(state, pth=None, onnx=None):
+    pairs = max(0, int(state.get("pairs_done") or 0))
+    target = max(1, int(state.get("pairs_target") or 800))
+    updates = max(0, int(state.get("updates_done") or 0))
+    total = max(1, int(state.get("steps_target") or 5000))
+    status = escape(str(state.get("status", "ready")).upper())
+    stage = escape(str(state.get("stage", "Upload one recording to begin.")))
+    color = "#269e6c" if state.get("status") == "complete" else "#7487ac"
     return (
-        '<div style="display:grid;gap:14px;padding:12px 2px">'
-        f'<strong>{escape(stage)}</strong>'
-        '<div style="display:grid;gap:5px">'
-        f'<span>Teacher pairs: <b>{pairs} / 400</b></span>'
-        f'<progress value="{pairs}" max="400" style="width:100%;height:18px"></progress>'
-        '</div><div style="display:grid;gap:5px">'
-        f'<span>Neural training: <b>{updates} / {total_steps} updates</b></span>'
-        f'<progress value="{updates}" max="{total_steps}" style="width:100%;height:18px"></progress>'
-        '</div>'
-        f'<span>Export: {state}</span>'
-        '<small>Bars track completed work, not estimated remaining minutes.</small>'
+        f'<div style="display:grid;gap:12px;padding:12px 0">'
+        f'<div><b style="color:{color}">{status}</b> — {stage}</div>'
+        f'<div>Quality-checked training pairs: <b>{min(pairs,target)}/{target}</b>'
+        f'<progress value="{min(pairs,target)}" max="{target}"'
+        f' style="width:100%;height:18px"></progress></div>'
+        f'<div>Neural weight updates: <b>{min(updates,total)}/{total}</b>'
+        f'<progress value="{min(updates,total)}" max="{total}"'
+        f' style="width:100%;height:18px"></progress></div>'
+        f'<div>Saved checkpoint: <b>{"Ready to download" if pth else "Not yet"}</b>'
+        f' | Validated ONNX: <b>{"Ready to download" if onnx else "Not yet"}</b></div>'
+        '<small>Progress is counted from saved server-side work. Refreshing this page does not restart training.</small>'
         '</div>'
     )
 
 
-def available_model_files(job_dir):
-    """Return existing trained checkpoint and verified ONNX independently.
-
-    PTH may be an intermediate saved checkpoint. ONNX appears only when
-    model_report.json has been written after the real inference checks.
-    No ZIP and no GPU are needed to access either artifact.
-    """
-    output = job_dir / "llvc-trained"
-    checkpoints = []
-    for file in (output / "checkpoints").glob("G_*.pth"):
-        match = re.fullmatch(r"G_(\d+)\.pth", file.name)
-        if match and file.is_file() and file.stat().st_size >= 2_000_000:
-            checkpoints.append((int(match.group(1)), file))
-    pth_file = max(checkpoints, key=lambda item: item[0])[1] if checkpoints else None
-    report_file = output / "model_report.json"
-    onnx_file = None
-    if report_file.is_file():
-        try:
-            import json
-            report = json.loads(report_file.read_text())
-            name = report.get("file", "")
-            if (isinstance(name, str) and
-                    re.fullmatch(r"[A-Za-z0-9_-]+\.onnx", name) and
-                    isinstance(report.get("steps"), int) and
-                    report.get("onnx_io") == "audio_in -> audio_out"):
-                candidate = output / name
-                if (candidate.is_file() and
-                        candidate.stat().st_size >= 2_000_000 and
-                        candidate.stat().st_size == report.get("size_bytes") and
-                        (output / "checkpoints" / f"G_{report['steps']}.pth").is_file()):
-                    onnx_file = candidate
-        except (OSError, ValueError, TypeError):
-            pass
-    return (str(pth_file) if pth_file else None,
-            str(onnx_file) if onnx_file else None)
+def job_status(job_id, last_seen=None):
+    """Poll (read-only) with optional Gradio per-session file-output caching."""
+    last_seen = last_seen or ("", "", "")
+    job = safe_dir(job_id)
+    if job is None:
+        return (str(job_id or ""), progress_html({}),
+                "No job selected. Select a saved job below if the browser refreshed.",
+                gr.update(value=None), gr.update(value=None),
+                ("", "", ""))
+    state = load_state(job)
+    if state.get("status") == "running" and not worker_running(state):
+        state.update(status="interrupted", stage="Worker no longer running; saved files may remain")
+        # Update state so a refreshed browser has the same diagnosis.
+        write_state(job, state)
+    pth, onnx = saved_files(job, state)
+    prior_id, prior_pth, prior_onnx = last_seen
+    changed_job = job.name != prior_id
+    update_pth = pth if changed_job or pth != prior_pth else gr.update()
+    update_onnx = onnx if changed_job or onnx != prior_onnx else gr.update()
+    description = tail_logs(job)
+    if state.get("error"):
+        description += "\n\nLAST ERROR: " + str(state["error"])
+    return (job.name, progress_html(state, pth, onnx), description,
+            update_pth, update_onnx, (job.name, pth or "", onnx or ""))
 
 
-def create_voice(uploaded_audio, steps, resume_id):
-    steps = int(steps)
-    progress = progress_html(total_steps=steps)
-    # Resume only an existing job in this exact running container/volume.
-    resume_id = (resume_id or "").strip()
-    if resume_id:
-        if not re.fullmatch(r"[a-f0-9]{12}", resume_id):
-            yield "Invalid recovery job ID (expected 12 hexadecimal characters).", None, None, progress
-            return
-        job_dir = JOBS / resume_id
-        if not (job_dir / "dataset" / "manifest.json").is_file():
-            yield ("No saved pairs found for " + resume_id +
-                   ". Restart/rebuild may have erased temporary storage."), None, None, progress
-            return
-        # A completed dataset contains the processed reference itself, so
-        # the user doesn't have to upload another two-hour original.
-        saved_reference = job_dir / "target_reference.wav"
-        if not saved_reference.is_file():
-            yield "Recovered job is missing its reference audio; cannot resume safely.", None, None, progress
-            return
-        uploaded_audio = str(saved_reference)
-    else:
-        if not uploaded_audio:
-            yield "Upload an audio recording first, or enter a saved job ID.", None, None, progress
-            return
-        if not os.path.isfile(uploaded_audio):
-            yield "Uploaded file no longer exists. Try uploading again.", None, None, progress
-            return
-        job_dir = JOBS / uuid.uuid4().hex[:12]
-    # Test CUDA before starting a long job, never launch GPU training on CPU.
+def launch_worker(job):
+    log_file = job / "launcher.log"
+    with open(log_file, "ab") as log:
+        subprocess.Popen(
+            [sys.executable, str(BASE / "irl-voice" / "voice-training" / "job_worker.py"),
+             "--job", str(job)],
+            cwd=str(job), env={**os.environ, "PYTHONUNBUFFERED": "1"},
+            stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+            close_fds=True, start_new_session=True,
+        )
+
+
+def any_gpu_job_active():
+    # A private Space has one T4. Reject accidental concurrent jobs before
+    # anyone pays for duplicate GPU work.
+    for label in recent_jobs():
+        job = safe_dir(label[:12])
+        if job:
+            state = load_state(job)
+            if state.get("status") in ("queued", "running") and worker_running(state):
+                return job.name
+    return None
+
+
+def start_job(audio, profile, previous_id):
+    if not audio or not Path(audio).is_file():
+        return previous_id or "", previous_id or "", "Upload an audio recording first."
+    if profile not in PROFILES:
+        return previous_id or "", previous_id or "", "Select a valid training profile."
+    existing = any_gpu_job_active()
+    if existing:
+        return existing, existing, (
+            f"Job {existing} is already running. Reopened it instead of starting another paid run."
+        )
     try:
         import torch
         if not torch.cuda.is_available():
-            yield "NO NVIDIA GPU DETECTED. Assign a T4 GPU in Space Settings → Hardware, then restart.", None, None, progress
-            return
-    except Exception as exc:
-        yield f"GPU preflight failed: {exc}", None, None, progress
-        return
-    job_dir.mkdir(parents=True, exist_ok=True)
-    command = [
-        sys.executable,
-        "/app/irl-voice/voice-training/one_click_pipeline.py",
-        "--audio", str(uploaded_audio),
-        "--run-dir", str(job_dir),
-        "--repo", "/app/irl-voice",
-        "--seed-vc", "/app/seed-vc",
-        "--llvc", "/app/llvc-upstream",
-        "--cache", str(CACHE),
-        "--pairs", "400",
-        "--steps", str(int(steps)),
-        "--batch", "2",
-        "--teacher-steps", "10",
-        "--skip-zip",
-    ]
-    env = os.environ.copy()
-    env["PYTHONUNBUFFERED"] = "1"
-    logs = deque(maxlen=90)
-    logs.append(f"Job: {job_dir.name}" + (" (RESUMING saved 400 pairs)" if resume_id else ""))
-    logs.append("Training PTH checkpoint and verified ONNX will appear in separate download boxes. NO ZIP required.")
-    completed_pairs = 400 if resume_id else 0
-    completed_steps = 0
-    exported = False
-    existing_pth, existing_onnx = available_model_files(job_dir)
-    last_pth, last_onnx = existing_pth, existing_onnx
-    yield "\n".join(logs), existing_pth, existing_onnx, progress_html(
-        completed_pairs, 0, steps, "Starting GPU job"
-    )
-    process = subprocess.Popen(
-        command, cwd="/app", env=env,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, bufsize=1,
-    )
-    last_update = 0.0
-    for line in process.stdout:
-        line = line.rstrip()
-        if not line:
-            continue
-        logs.append(line)
-        counter_changed = False
-        pair_match = re.search(r"Teacher conversion:\s*(\d+)/400 accepted", line)
-        if pair_match:
-            completed_pairs = min(400, int(pair_match.group(1)))
-            counter_changed = True
-            stage = "Building paired speech (Seed-VC)"
-        elif "[4/5]" in line or "Genuine teacher corpus:" in line:
-            completed_pairs = 400
-            stage = "Training LLVC model"
-            counter_changed = True
-        step_match = re.search(r"LLVC training (\d+)/(\d+) steps", line)
-        if step_match:
-            completed_steps = min(steps, int(step_match.group(1)))
-            stage = "Training LLVC model"
-            counter_changed = True
-        if "LLVC training completed" in line and "gradient updates" in line:
-            completed_steps = steps
-            counter_changed = True
-        if "REAL trained full-size ONNX exported:" in line:
-            exported = True
-            completed_steps = steps
-            stage = "ONNX verified; individual file ready for download"
-            counter_changed = True
-        if "DONE: PTH and ONNX saved separately." in line:
-            exported = True
-            completed_steps = steps
-            completed_pairs = 400
-            stage = "PTH and ONNX ready — download each file"
-            counter_changed = True
-        important = (
-            line.startswith("[") or
-            line.startswith("Teacher conversion") or
-            line.startswith("LLVC training ") or
-            line.startswith("COMPLETE") or
-            "Error" in line or "Traceback" in line
-        )
-        now = time.monotonic()
-        # The latest checkpoint is shown when its save has finished;
-        # the ONNX appears only after its post-export validation report.
-        pth_now, onnx_now = available_model_files(job_dir)
-        checkpoint_safe = ("Saved checkpoints to " in line or
-                           "Requested checkpoint already exists" in line or
-                           "Using completed trained checkpoint" in line or
-                           "REAL trained full-size ONNX exported" in line or
-                           "MODEL_FILES_READY" in line)
-        changed_pth = bool(pth_now and pth_now != last_pth and checkpoint_safe)
-        changed_onnx = bool(onnx_now and onnx_now != last_onnx)
-        if ((counter_changed or important or changed_pth or changed_onnx)
-                and (now - last_update > 0.8 or changed_pth or changed_onnx)):
-            if changed_pth:
-                last_pth = pth_now
-            if changed_onnx:
-                last_onnx = onnx_now
-                exported = True
-            stage = locals().get("stage", "Working")
-            if changed_pth and not changed_onnx:
-                logs.append("DOWNLOAD AVAILABLE: latest saved PTH checkpoint.")
-            if changed_onnx:
-                logs.append("DOWNLOAD AVAILABLE: verified ONNX (no ZIP).")
-            yield ("\n".join(logs),
-                   last_pth if changed_pth else gr.update(),
-                   last_onnx if changed_onnx else gr.update(),
-                   progress_html(completed_pairs, completed_steps, steps, stage, exported))
-            last_update = now
-    return_code = process.wait()
-    pth_file, onnx_file = available_model_files(job_dir)
-    if return_code == 0 and pth_file and onnx_file:
-        logs.append("SUCCESS: PTH and ONNX available in their own download boxes. NO ZIP.")
-        yield ("\n".join(logs), pth_file, onnx_file,
-               progress_html(400, steps, steps, "Completed — download both files", True))
-    else:
-        logs.append(f"JOB STOPPED (exit {return_code}). Any finished PTH/ONNX remains downloadable above.")
-        yield ("\n".join(logs), pth_file, onnx_file,
-               progress_html(completed_pairs, completed_steps, steps,
-                             "Stopped — available model files preserved", bool(onnx_file)))
-
-def recover_saved_files(job_id):
-    """Expose finished PTH and ONNX without starting a GPU or ZIP build."""
-    job_id = (job_id or "").strip()
-    if not re.fullmatch(r"[a-f0-9]{12}", job_id):
-        return "Enter the 12-character job ID.", None, None
-    directory = JOBS / job_id
-    pth, onnx = available_model_files(directory)
-    if not pth and not onnx:
-        return ("No saved model files found. Space storage may have been "
-                "erased when paused or rebuilt."), None, None
-    message = "Saved downloads found: "
-    message += ("PTH " if pth else "")
-    message += ("ONNX" if onnx else "")
-    return message, pth, onnx
-
-
-def backup_pairs(job_id):
-    """Download the already generated teacher corpus before a rebuild."""
-    job_id = (job_id or "").strip()
-    if not re.fullmatch(r"[a-f0-9]{12}", job_id):
-        return "Enter the 12-character job ID printed in your training logs.", None
-    folder = JOBS / job_id
-    manifest = folder / "dataset" / "manifest.json"
-    if not manifest.is_file():
-        return "No pairs found for this job; storage may have been reset.", None
-    archive = folder / "teacher_pairs_BACKUP.zip"
-    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as bundle:
-        for file in sorted((folder / "dataset").rglob("*.wav")):
-            bundle.write(file, arcname=str(file.relative_to(folder)))
-        bundle.write(manifest, arcname="dataset/manifest.json")
-        for name in ("target_reference.wav", "reference_selection.json"):
-            f = folder / name
-            if f.is_file():
-                bundle.write(f, arcname=name)
-    with zipfile.ZipFile(archive) as bundle:
-        if bundle.testzip() is not None:
-            return "Backup file failed integrity check.", None
-    return f"Backup ready for saved job {job_id}.", str(archive)
-
-
-with gr.Blocks(title="Custom Neural Voice Trainer") as demo:
-    gr.Markdown(
-        "# Custom neural voice trainer\n"
-        "Upload **one recording (2 seconds to 2 hours)**. "
-        "The app analyzes **at most its first 3 minutes**, "
-        "builds **400 accepted matching voice pairs**, fine-tunes the "
-        "pretrained LLVC model, and offers **separate PTH and ONNX downloads**.\n\n"
-        "Runs on dedicated NVIDIA GPU hardware. "
-        "For 2–3-second voice references, cloning quality may be poor. "
-        "Only upload recordings you have permission to process."
-    )
-    with gr.Row():
-        audio = gr.File(label="Upload your voice recording", file_types=["audio"], type="filepath")
-        with gr.Column():
-            updates = gr.Dropdown(
-                label="Training updates", choices=[500, 1000, 2000, 5000, 10000],
-                value=500, info="500 = quick baseline; 5,000 = longer fine-tuning. These are updates on the same 400 pairs."
+            return previous_id or "", previous_id or "", (
+                "No NVIDIA GPU detected. Do not start paid training on CPU-only hardware."
             )
-            start = gr.Button("Train voice and export PTH + ONNX", variant="primary")
-    with gr.Accordion("Recover an interrupted job (optional)", open=False):
-        resume_id = gr.Textbox(
-            label="Existing job ID",
-            placeholder="e.g. 699d49e13cea",
-            info="Resume on the same live container or mounted storage; don't re-upload or regenerate 400 pairs."
+    except Exception as exc:
+        return previous_id or "", previous_id or "", f"GPU check failed: {exc}"
+    pairs, steps, teacher = PROFILES[profile]
+    job_id = uuid.uuid4().hex[:12]
+    job = JOBS / job_id
+    job.mkdir(parents=True, exist_ok=False)
+    audio_dir = job / "input_audio"
+    audio_dir.mkdir()
+    source_name = Path(audio).name
+    suffix = Path(source_name).suffix.lower()
+    if suffix not in (".wav", ".mp3", ".flac", ".m4a", ".ogg", ".opus", ".mp4", ".aac"):
+        return previous_id or "", previous_id or "", "Unsupported audio format."
+    filename = "reference" + suffix
+    try:
+        # Uploaded Gradio temp files can disappear after a browser refresh.
+        # Copy the voice recording INTO the job before returning job ID.
+        shutil.copy2(audio, audio_dir / filename)
+        config = {
+            "job_id": job_id, "audio_filename": filename,
+            "pairs": pairs, "steps": steps, "teacher_steps": teacher,
+            "repo": str(BASE / "irl-voice"),
+            "seed_vc": str(BASE / "seed-vc"),
+            "llvc": str(BASE / "llvc-upstream"), "cache": str(CACHE),
+            "created_at": time.time(), "profile": profile,
+        }
+        (job / "job_config.json").write_text(json.dumps(config, indent=2))
+        write_state(job, {
+            "job_id": job_id, "job_dir": str(job), "status": "queued",
+            "stage": "Job saved. Launching detached worker.",
+            "pairs_done": 0, "pairs_target": pairs,
+            "updates_done": 0, "steps_target": steps,
+            "updated_at": time.time(), "checkpoint": "", "error": "",
+        })
+        launch_worker(job)
+        return job_id, job_id, (
+            f"Job {job_id} saved and started independently of this browser. "
+            "You may refresh and return; select the job in Saved Jobs to see the same progress. "
+            "Downloads appear separately as soon as ready."
         )
-        backup = gr.Button("Download saved pairs before rebuilding", variant="secondary")
-        backup_message = gr.Textbox(label="Backup status", interactive=False)
-        backup_file = gr.File(label="Saved pairs ZIP", interactive=False)
-        backup.click(fn=backup_pairs, inputs=resume_id,
-                     outputs=[backup_message, backup_file])
-        salvage = gr.Button("Find saved PTH and ONNX downloads (no GPU)")
-        salvage_message = gr.Textbox(label="Recovery status", interactive=False)
-        salvage_pth = gr.File(label="Saved PTH checkpoint", interactive=False)
-        salvage_onnx = gr.File(label="Saved verified ONNX", interactive=False)
-        salvage.click(fn=recover_saved_files, inputs=resume_id,
-                      outputs=[salvage_message, salvage_pth, salvage_onnx])
-    progress_panel = gr.HTML(value=progress_html(), label="Live progress")
-    status = gr.Textbox(label="Detailed training log", lines=16, max_lines=28, interactive=False)
-    with gr.Row():
-        pth_download = gr.File(
-            label="Download PTH checkpoint (available as soon as saved)",
-            interactive=False,
-        )
-        onnx_download = gr.File(
-            label="Download verified ONNX (available after export)",
-            interactive=False,
-        )
-    start.click(
-        fn=create_voice, inputs=[audio, updates, resume_id],
-        outputs=[status, pth_download, onnx_download, progress_panel],
-        concurrency_limit=1,
-    )
-    gr.Markdown(
-        f"**Storage location:** `{WORKSPACE}`. "
-        + ("A writable /data volume is being used for jobs and model caches. "
-           if WORKSPACE == Path("/data") else
-           "**Temporary storage** — pausing, stopping or rebuilding the Space "
-           "can erase saved pairs and models. Download the completed files "
-           "before stopping the Space; no additional storage purchase is required. ")
-        + "PTH is available when a training checkpoint finishes saving; "
-          "ONNX becomes available after export validation. "
-          "No ZIP is created or required. "
-          "ONNX execution checks do not prove the voice sounds like the reference."
-    )
+    except Exception as exc:
+        return previous_id or "", previous_id or "", f"Could not save/start job: {exc}"
 
-demo.queue(default_concurrency_limit=1, max_size=4)
-demo.launch(server_name="0.0.0.0", server_port=7860, max_file_size="4gb",
-            allowed_paths=[str(JOBS)])
+
+def retry_job(job_id):
+    job = safe_dir(job_id)
+    if not job:
+        return job_id, job_id, "Saved job no longer exists; no GPU work started."
+    state = load_state(job)
+    if state.get("status") in ("running", "queued") and worker_running(state):
+        return job_id, job_id, "Already running; nothing was restarted."
+    existing = any_gpu_job_active()
+    if existing:
+        return existing, existing, "Another GPU job is still running."
+    if not (job / "target_reference.wav").is_file():
+        return job_id, job_id, ("The previously selected reference is missing. "
+                               "Cannot safely resume this job.")
+    if not (job / "dataset" / "manifest.json").is_file():
+        return job_id, job_id, ("The generated pairs are missing. "
+                               "Cannot safely resume without repeating them.")
+    config = json.loads((job / "job_config.json").read_text())
+    if not (job / "input_audio" / config["audio_filename"]).is_file():
+        return job_id, job_id, "Saved original recording is missing."
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            return job_id, job_id, "No T4 GPU available to resume training."
+    except Exception as exc:
+        return job_id, job_id, f"GPU check failed: {exc}"
+    state.update(status="queued", stage="Retry requested on existing saved job",
+                 error="", updated_at=time.time(), worker_pid=None)
+    write_state(job, state)
+    try:
+        launch_worker(job)
+    except Exception as exc:
+        state.update(status="failed", error=str(exc))
+        write_state(job, state)
+        return job_id, job_id, f"Could not resume: {exc}"
+    return job_id, job_id, f"Reusing job {job_id}; existing dataset and model files will be checked before work."
+
+
+def open_saved_job(selection):
+    job_id = (selection or "").strip()[:12]
+    if not safe_dir(job_id):
+        return "", "", "No saved job was found with that ID."
+    return job_id, job_id, "Saved job restored. No new training started."
+
+
+def refresh_choices():
+    return gr.update(choices=recent_jobs())
+
+
+def make_app():
+    with gr.Blocks(title="LLVC Neural Voice Studio") as demo:
+        browser_id = gr.BrowserState(
+            value="", storage_key="llvc-private-space-last-job-v4",
+            secret="LLVC-private-space-browser-job-id-stable-v4",
+        )
+        last_seen = gr.State(("", "", ""))
+        gr.Markdown(
+            "# LLVC Neural Voice Studio\n"
+            "Your training is a **server-side job**, not a browser session. "
+            "Closing the tab or refreshing the page won't cancel a running job. "
+            "Your last job ID is saved in this browser and the server lists jobs still on disk."
+        )
+        with gr.Row():
+            upload = gr.File(label="Upload reference voice (2 seconds–2 hours)",
+                             file_types=["audio"], type="filepath")
+            with gr.Column():
+                profile = gr.Radio(
+                    choices=list(PROFILES), value=DEFAULT_PROFILE,
+                    label="Quality / compute profile",
+                    info="Higher pair counts and teacher steps mean significantly more GPU processing. "
+                         "Choose the lower-cost trial before an expensive quality run if desired.",
+                )
+                begin = gr.Button("Start training (save independent job)", variant="primary")
+                retry = gr.Button("Resume saved job (only if stopped)", variant="secondary")
+        message = gr.Textbox(label="System message", interactive=False)
+        with gr.Row():
+            job_id = gr.Textbox(label="Saved job ID", interactive=False)
+            with gr.Column():
+                job_choice = gr.Dropdown(choices=recent_jobs(), label="Saved jobs on this Space")
+                with gr.Row():
+                    reload_jobs = gr.Button("Refresh jobs")
+                    open_job = gr.Button("Open selected job")
+        bars = gr.HTML(value=progress_html({}))
+        with gr.Row():
+            pth = gr.File(label="Download trained PTH (when checkpoint saved)", interactive=False)
+            onnx = gr.File(label="Download verified ONNX (when export finishes)", interactive=False)
+        logs = gr.Textbox(label="Persistent training log (survives browser refresh)",
+                          lines=17, max_lines=26, interactive=False)
+        gr.Markdown(
+            "**No ZIP step. No additional storage purchase required.** "
+            + ("Persistent mounted storage is in use. " if WORKSPACE == Path("/data")
+               else "Files use temporary Space disk, so pausing/rebuilding the Space can erase "
+                    "jobs. Download PTH/ONNX before stopping hardware. ")
+            + "The voice's similarity must be checked by listening to comparison samples; "
+              "more training data does not guarantee a matching voice."
+        )
+        timer = gr.Timer(value=3.0)
+        # Starting and retrying are SHORT callbacks, never 2–5 hour queued tasks.
+        begin.click(start_job, inputs=[upload, profile, browser_id],
+                    outputs=[browser_id, job_id, message],
+                    queue=False, concurrency_limit=1)
+        retry.click(retry_job, inputs=[browser_id],
+                    outputs=[browser_id, job_id, message],
+                    queue=False, concurrency_limit=1)
+        open_job.click(open_saved_job, inputs=[job_choice],
+                       outputs=[browser_id, job_id, message], queue=False)
+        reload_jobs.click(refresh_choices, outputs=[job_choice], queue=False)
+        # Rehydration reads BrowserState from localStorage on each page load.
+        # The timer can continue polling after any disconnect/reconnect.
+        demo.load(job_status, inputs=[browser_id, last_seen],
+                  outputs=[job_id, bars, logs, pth, onnx, last_seen], queue=False)
+        timer.tick(job_status, inputs=[browser_id, last_seen],
+                   outputs=[job_id, bars, logs, pth, onnx, last_seen],
+                   queue=False, show_progress="hidden")
+    return demo
+
+
+if __name__ == "__main__":
+    app = make_app()
+    app.queue(default_concurrency_limit=1, max_size=4)
+    app.launch(server_name="0.0.0.0", server_port=7860, max_file_size="4gb",
+               allowed_paths=[str(JOBS)])
