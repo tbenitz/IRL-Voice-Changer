@@ -378,6 +378,12 @@ def retry_job(job_id):
     if not job:
         return job_id, job_id, "Saved job no longer exists; no GPU work started."
     state = load_state(job)
+    completed_pth, completed_onnx = saved_files(job, state)
+    if completed_pth and completed_onnx:
+        return job_id, job_id, (
+            "PTH and validated ONNX are already saved; use the download controls. "
+            "No new training has been started."
+        )
     if state.get("status") in ("running", "queued") and worker_running(state):
         return job_id, job_id, "Already running; nothing was restarted."
     existing = any_gpu_job_active()
