@@ -136,7 +136,10 @@ def write_state(job, state):
 def worker_running(state):
     pid = state.get("worker_pid")
     if not isinstance(pid, int) or pid <= 1:
-        return state.get("status") == "queued"
+        # The worker gets a short start-up allowance. A failed launcher must
+        # not block all future jobs forever with a stale "queued" entry.
+        age = time.time() - float(state.get("updated_at", 0) or 0)
+        return state.get("status") == "queued" and age < 45
     try:
         os.kill(pid, 0)
         return True
@@ -259,8 +262,9 @@ def job_status(job_id, last_seen=None):
                 None, None, None, None, None,
                 ("", "", "", "", "", ""))
     state = load_state(job)
-    if state.get("status") == "running" and not worker_running(state):
-        state.update(status="interrupted", stage="Worker no longer running; saved files may remain")
+    if state.get("status") in ("running", "queued") and not worker_running(state):
+        state.update(status="interrupted",
+                     stage="Worker stopped or launch timed out; saved files may remain")
         write_state(job, state)
     pth, onnx = saved_files(job, state)
     original, teacher, student = audition_files(job, onnx)
@@ -335,12 +339,16 @@ def start_job(audio, profile, previous_id):
     if suffix not in (".wav", ".mp3", ".flac", ".m4a", ".ogg", ".opus", ".mp4", ".aac"):
         return previous_id or "", previous_id or "", "Unsupported audio format."
     filename = "reference" + suffix
+    # Keep the user's chosen model name instead of producing reference.onnx
+    model_name = re.sub(r"[^A-Za-z0-9_-]+", "_", Path(source_name).stem).strip("_").lower()
+    model_name = (model_name or "voice")[:50] + "_" + job_id[:6]
     try:
         # Uploaded Gradio temp files can disappear after a browser refresh.
         # Copy the voice recording INTO the job before returning job ID.
         shutil.copy2(audio, audio_dir / filename)
         config = {
             "job_id": job_id, "audio_filename": filename,
+            "model_name": model_name,
             "pairs": pairs, "steps": steps, "teacher_steps": teacher,
             "repo": str(BASE / "irl-voice"),
             "seed_vc": str(BASE / "seed-vc"),
