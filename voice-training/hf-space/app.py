@@ -195,30 +195,46 @@ def progress_html(state, pth=None, onnx=None):
     )
 
 
+def audition_files(job, verified_onnx):
+    """A/B examples created by the real model exporter, no new inference."""
+    if not verified_onnx:
+        return (None, None, None)
+    directory = job / "llvc-trained"
+    names = ("AB_original.wav", "AB_teacher.wav", "AB_trained_ONNX.wav")
+    files = [directory / name for name in names]
+    return tuple(str(file) if file.is_file() and file.stat().st_size > 1000 else None
+                 for file in files)
+
+
 def job_status(job_id, last_seen=None):
-    """Poll (read-only) with optional Gradio per-session file-output caching."""
-    last_seen = last_seen or ("", "", "")
+    """Read status and restore artifacts without running a training function."""
+    last_seen = last_seen or ("", "", "", "", "", "")
+    if len(last_seen) != 6:
+        last_seen = ("", "", "", "", "", "")
     job = safe_dir(job_id)
     if job is None:
         return (str(job_id or ""), progress_html({}),
                 "No job selected. Select a saved job below if the browser refreshed.",
-                gr.update(value=None), gr.update(value=None),
-                ("", "", ""))
+                None, None, None, None, None,
+                ("", "", "", "", "", ""))
     state = load_state(job)
     if state.get("status") == "running" and not worker_running(state):
         state.update(status="interrupted", stage="Worker no longer running; saved files may remain")
-        # Update state so a refreshed browser has the same diagnosis.
         write_state(job, state)
     pth, onnx = saved_files(job, state)
-    prior_id, prior_pth, prior_onnx = last_seen
-    changed_job = job.name != prior_id
-    update_pth = pth if changed_job or pth != prior_pth else gr.update()
-    update_onnx = onnx if changed_job or onnx != prior_onnx else gr.update()
+    original, teacher, student = audition_files(job, onnx)
+    current = (job.name, pth or "", onnx or "",
+               original or "", teacher or "", student or "")
+    update_values = [
+        value if current[0] != last_seen[0] or value != previous else gr.update()
+        for value, previous in zip((pth, onnx, original, teacher, student),
+                                   last_seen[1:])
+    ]
     description = tail_logs(job)
     if state.get("error"):
         description += "\n\nLAST ERROR: " + str(state["error"])
     return (job.name, progress_html(state, pth, onnx), description,
-            update_pth, update_onnx, (job.name, pth or "", onnx or ""))
+            *update_values, current)
 
 
 def launch_worker(job):
@@ -363,7 +379,7 @@ def make_app():
             value="", storage_key="llvc-private-space-last-job-v4",
             secret="LLVC-private-space-browser-job-id-stable-v4",
         )
-        last_seen = gr.State(("", "", ""))
+        last_seen = gr.State(("", "", "", "", "", ""))
         gr.Markdown(
             "# LLVC Neural Voice Studio\n"
             "Your training is a **server-side job**, not a browser session. "
@@ -394,6 +410,13 @@ def make_app():
         with gr.Row():
             pth = gr.File(label="Download trained PTH (when checkpoint saved)", interactive=False)
             onnx = gr.File(label="Download verified ONNX (when export finishes)", interactive=False)
+        with gr.Accordion("Voice quality A/B comparison (once ONNX is validated)", open=False):
+            with gr.Row():
+                original_audio = gr.Audio(label="Original source speech", interactive=False)
+                teacher_audio = gr.Audio(label="Seed-VC target conversion", interactive=False)
+                model_audio = gr.Audio(label="Your trained LLVC ONNX conversion", interactive=False)
+            gr.Markdown("Compare the three clips by ear. An ONNX export passing inference checks "
+                        "does not by itself establish that the target speaker was learned.")
         logs = gr.Textbox(label="Persistent training log (survives browser refresh)",
                           lines=17, max_lines=26, interactive=False)
         gr.Markdown(
@@ -418,9 +441,11 @@ def make_app():
         # Rehydration reads BrowserState from localStorage on each page load.
         # The timer can continue polling after any disconnect/reconnect.
         demo.load(job_status, inputs=[browser_id, last_seen],
-                  outputs=[job_id, bars, logs, pth, onnx, last_seen], queue=False)
+                  outputs=[job_id, bars, logs, pth, onnx,
+                           original_audio, teacher_audio, model_audio, last_seen], queue=False)
         timer.tick(job_status, inputs=[browser_id, last_seen],
-                   outputs=[job_id, bars, logs, pth, onnx, last_seen],
+                   outputs=[job_id, bars, logs, pth, onnx,
+                            original_audio, teacher_audio, model_audio, last_seen],
                    queue=False, show_progress="hidden")
     return demo
 
