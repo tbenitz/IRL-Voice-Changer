@@ -93,25 +93,19 @@ class PipelineSmoke(unittest.TestCase):
     def test_progress_uses_true_pair_and_step_counts(self):
         app = ROOT / "hf-space" / "app.py"
         progress_html = get_function(app, "progress_html", {"escape": escape})
-        markup = progress_html(42, 250, 500, stage="Training")
-        self.assertIn("42 / 400", markup)
-        self.assertIn("250 / 500", markup)
-        self.assertIn('value="42"', markup)
-        self.assertIn('value="250"', markup)
-        self.assertIn("Bars track completed work", markup)
-        tree = ast.parse(app.read_text())
-        generator = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
-                         and n.name == "create_voice")
-        patterns = [
-            n.args[0].value for n in ast.walk(generator)
-            if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-            and n.func.attr == "search" and n.args
-            and isinstance(n.args[0], ast.Constant)
-        ]
-        self.assertTrue(any(re.search(p, "Teacher conversion: 42/400 accepted; 45 attempted")
-                            for p in patterns))
-        self.assertTrue(any(re.search(p, "LLVC training 250/500 steps")
-                            for p in patterns))
+        markup = progress_html({
+            "status": "running", "stage": "Training",
+            "pairs_done": 462, "pairs_target": 800,
+            "updates_done": 725, "steps_target": 5000
+        }, "G_500.pth", None)
+        self.assertIn("462/800", markup)
+        self.assertIn("725/5000", markup)
+        self.assertIn('value="462"', markup)
+        self.assertIn('value="725"', markup)
+        self.assertIn("Ready to download", markup)
+        self.assertIn("Refresh", markup)
+
+
 
     def test_completed_model_shortcuts_gpu_and_zip(self):
         """Existing PTH+ONNX must be returned without starting any paid GPU work."""
@@ -152,9 +146,10 @@ class PipelineSmoke(unittest.TestCase):
             self.assertTrue((out / "example.onnx").exists())
 
     def test_direct_pth_download_available_before_onnx(self):
-        available = get_function(
-            ROOT / "hf-space" / "app.py", "available_model_files",
-            {"re": re, "Path": Path}
+        saved_files = get_function(
+            ROOT / "hf-space" / "app.py", "saved_files",
+            {"re": re, "Path": Path, "MODEL_RE": re.compile(r"^[A-Za-z0-9_-]+\.onnx$"),
+             "json": json}
         )
         with tempfile.TemporaryDirectory() as tmp:
             job = Path(tmp)
@@ -163,30 +158,38 @@ class PipelineSmoke(unittest.TestCase):
             checkpoint.mkdir(parents=True)
             pth = checkpoint / "G_100.pth"
             pth.write_bytes(b"p" * 2_000_001)
-            self.assertEqual(available(job), (str(pth), None))
+            state = {"checkpoint": str(pth), "status": "running"}
+            self.assertEqual(saved_files(job, state), (str(pth), None))
             onnx = output / "my_voice.onnx"
             onnx.write_bytes(b"o" * 2_000_001)
-            # An unverified ONNX is never advertised as downloadable.
-            self.assertEqual(available(job), (str(pth), None))
+            self.assertEqual(saved_files(job, state), (str(pth), None))
             report = output / "model_report.json"
             report.write_text(json.dumps({
                 "file": onnx.name, "steps": 100,
                 "size_bytes": onnx.stat().st_size,
                 "onnx_io": "audio_in -> audio_out"
             }))
-            self.assertEqual(available(job), (str(pth), str(onnx)))
-            # Simulate truncated model after report was written.
+            self.assertEqual(saved_files(job, state), (str(pth), str(onnx)))
             onnx.write_bytes(b"truncated")
-            self.assertEqual(available(job), (str(pth), None))
+            self.assertEqual(saved_files(job, state), (str(pth), None))
+
+
 
     def test_space_no_longer_requires_zip(self):
         app = (ROOT / "hf-space" / "app.py").read_text()
+        worker = (ROOT / "job_worker.py").read_text()
         pipeline = (ROOT / "one_click_pipeline.py").read_text()
-        self.assertIn('"--skip-zip"', app)
-        self.assertIn('outputs=[status, pth_download, onnx_download, progress_panel]', app)
+        self.assertIn('"--skip-zip"', worker)
+        self.assertIn('gr.BrowserState(', app)
+        self.assertIn('gr.Timer(value=3.0)', app)
+        self.assertIn('start_new_session=True', app)
+        self.assertIn('saved_files(job, state)', app)
         self.assertIn('if args.skip_zip:', pipeline)
-        self.assertIn('DONE: PTH and ONNX saved separately. ZIP packaging skipped entirely.', pipeline)
+        self.assertNotIn('def create_voice(', app)
         self.assertNotIn('recover_completed_model(', app)
+        self.assertEqual(pipeline.count('parser.add_argument("--pairs"'), 1)
+
+
 
     def test_source_corpus_does_not_transcode_all_800_candidates(self):
         source_corpus = get_function(
