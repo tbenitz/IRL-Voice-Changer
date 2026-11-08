@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-upload GPU voice pipeline: 2s–2h audio -> 400 aligned pairs -> LLVC PTH -> ONNX (optional ZIP).
+"""One-upload GPU voice pipeline: 2s–2h audio -> quality-screened pairs -> LLVC PTH -> ONNX.
 
 Run with the Python environment used for Seed-VC/LLVC (Colab voice-venv or
 a GPU Hugging Face Docker Space). New uploads get separate --run-dir paths.
@@ -173,7 +173,7 @@ def package_model(output, manifest, reference_info, run_dir, model_name, steps):
     metadata = {
         "model": model_name,
         "trained_updates": steps,
-        "requested_pairs": 400,
+        "requested_pairs": int(manifest.get("requested", 400)),
         "reference": reference_info,
         "accepted_pairs": sum(manifest.get(k, 0) for k in ("train", "val", "dev")),
         "model_architecture": "KoeAI LLVC HiFi-GAN",
@@ -206,7 +206,7 @@ def package_model(output, manifest, reference_info, run_dir, model_name, steps):
         if damaged:
             raise RuntimeError(f"ZIP integrity check failed: {damaged}")
     say(f"COMPLETE — ZIP: {archive}")
-    say(f"Pairs accepted: {metadata['accepted_pairs']}/400. Steps: {steps}.")
+    say(f"Pairs accepted: {metadata['accepted_pairs']}/{metadata['requested_pairs']}. Steps: {steps}.")
     return archive
 
 
@@ -222,14 +222,14 @@ def main():
     parser.add_argument("--seed-vc", type=Path, default=Path("/content/seed-vc"))
     parser.add_argument("--llvc", type=Path, default=Path("/content/llvc-upstream"))
     parser.add_argument("--cache", type=Path, default=Path("/content/voice-cache"))
-    parser.add_argument("--pairs", type=int, default=400)
+    parser.add_argument("--pairs", type=int, default=800)
     parser.add_argument("--steps", type=int, default=5000)
     parser.add_argument("--batch", type=int, default=2)
     parser.add_argument("--teacher-steps", type=int, default=10)
     parser.add_argument("--name", default="")
     args = parser.parse_args()
-    if args.pairs != 400:
-        parser.error("This one-click workflow generates exactly 400 accepted pairs.")
+    if not 200 <= args.pairs <= 2000:
+        parser.error("--pairs must be from 200 through 2000 accepted parallel clips.")
     if args.steps < 500 or args.steps % 500:
         parser.error("--steps must be 500 or more, in multiples of 500.")
     if not 1 <= args.batch <= 16:
