@@ -55,14 +55,35 @@ def safe_dir(job_id):
     if not ID_RE.fullmatch(job_id):
         return None
     folder = JOBS / job_id
-    return folder if (folder / "job_config.json").is_file() else None
+    if not folder.is_dir():
+        return None
+    # Recover jobs created by the previous version (before job_config.json).
+    if ((folder / "job_config.json").is_file() or
+            (folder / "dataset" / "manifest.json").is_file() or
+            (folder / "llvc-trained" / "checkpoints").is_dir()):
+        return folder
+    return None
 
 
 def load_state(job):
     try:
         return json.loads((job / "job_state.json").read_text())
     except (OSError, ValueError, TypeError):
-        return {}
+        # Older voice-training jobs had no saved state. Still offer their
+        # finished model artifacts instead of requiring a repeat upload.
+        manifest_path = job / "dataset" / "manifest.json"
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except (OSError, ValueError):
+            manifest = {}
+        target = int(manifest.get("requested", 400))
+        count = sum(int(manifest.get(k, 0)) for k in ("train", "val", "dev"))
+        return {
+            "status": "interrupted", "stage": "Earlier run detected — inspect saved model files",
+            "pairs_done": count, "pairs_target": target,
+            "updates_done": 0, "steps_target": 500,
+            "error": "", "checkpoint": "",
+        }
 
 
 def write_state(job, state):
@@ -128,7 +149,7 @@ def recent_jobs():
     for job in JOBS.iterdir():
         if not job.is_dir() or not ID_RE.fullmatch(job.name):
             continue
-        if not (job / "job_config.json").is_file():
+        if not safe_dir(job.name):
             continue
         state = load_state(job)
         jobs.append((job.stat().st_mtime,
@@ -299,6 +320,11 @@ def retry_job(job_id):
     if not (job / "dataset" / "manifest.json").is_file():
         return job_id, job_id, ("The generated pairs are missing. "
                                "Cannot safely resume without repeating them.")
+    if not (job / "job_config.json").is_file():
+        return job_id, job_id, (
+            "This is a legacy job. Its downloads can be recovered, but its "
+            "training cannot be safely resumed automatically."
+        )
     config = json.loads((job / "job_config.json").read_text())
     if not (job / "input_audio" / config["audio_filename"]).is_file():
         return job_id, job_id, "Saved original recording is missing."
