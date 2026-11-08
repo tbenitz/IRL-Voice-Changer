@@ -159,11 +159,17 @@ def saved_files(job, state):
         candidate = Path(safe_reported)
         if candidate.parent == checkpoints and candidate.is_file() and candidate.stat().st_size >= 2_000_000:
             chosen = candidate
-    if chosen is None and state.get("status") in ("failed", "complete", "interrupted"):
+    if chosen is None:
+        # Some LLVC builds suppress the logger's "Saved checkpoints" line.
+        # A checkpoint is still downloadable while training once it has
+        # remained untouched long enough to avoid a partial torch.save file.
+        terminal = state.get("status") in ("failed", "complete", "interrupted")
+        now = time.time()
         files = sorted(
             ((int(m.group(1)), f) for f in checkpoints.glob("G_*.pth")
              if (m := re.fullmatch(r"G_(\d+)\.pth", f.name))
-             and f.stat().st_size >= 2_000_000),
+             and f.stat().st_size >= 2_000_000
+             and (terminal or now - f.stat().st_mtime >= 15.0)),
             key=lambda item: item[0]
         )
         chosen = files[-1][1] if files else None
