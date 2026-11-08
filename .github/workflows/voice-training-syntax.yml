@@ -16,7 +16,7 @@ jobs:
           python-version: "3.11"
       - name: Check Python training programs
         run: |
-          python -m py_compile voice-training/generate_teacher_pairs.py voice-training/train_full_llvc.py voice-training/colab_setup.py voice-training/one_click_pipeline.py voice-training/hf-space/app.py
+          python -m py_compile voice-training/generate_teacher_pairs.py voice-training/train_full_llvc.py voice-training/colab_setup.py voice-training/one_click_pipeline.py voice-training/hf-space/app.py voice-training/job_worker.py voice-training/tests/test_durable_jobs.py voice-training/tests/test_smoke.py
       - name: Check notebook structure and execution commands
         run: |
           python - <<'PY'
@@ -49,7 +49,9 @@ jobs:
           assert '.onnx' in src
           print("One-click notebook and orchestrator source valid (GPU run not executed)")
           PY
-      - name: Regression tests (small-report ZIP, progress counters, lazy source clips)
-        run: python voice-training/tests/test_smoke.py
+      - name: CPU regression tests: audio QA, refresh recovery, detached jobs, download and failure paths
+        run: |
+          python voice-training/tests/test_smoke.py
+          python voice-training/tests/test_durable_jobs.py
       - name: Check studio entry script
         run: node --check pocket-demo/studio/full-voice-builder.js
