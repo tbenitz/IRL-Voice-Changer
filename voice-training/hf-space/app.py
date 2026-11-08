@@ -429,7 +429,7 @@ def refresh_choices():
 def make_app():
     with gr.Blocks(title="LLVC Neural Voice Studio") as demo:
         browser_id = gr.BrowserState(
-            value="", storage_key="llvc-private-space-last-job-v4",
+            default_value="", storage_key="llvc-private-space-last-job-v4",
             secret="LLVC-private-space-browser-job-id-stable-v4",
         )
         last_seen = gr.State(("", "", "", "", "", ""))
